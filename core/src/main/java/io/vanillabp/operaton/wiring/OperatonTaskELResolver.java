@@ -3,11 +3,11 @@ package io.vanillabp.operaton.wiring;
 
 import org.operaton.bpm.engine.ProcessEngineException;
 import org.operaton.bpm.engine.impl.persistence.entity.ExecutionEntity;
-import jakarta.el.ELContext;
-import jakarta.el.ELResolver;
 
 import io.vanillabp.integration.adapter.spi.workflowtask.WorkflowTaskInvoker;
 import io.vanillabp.integration.adapter.spi.workflowtask.WorkflowTaskOutcome;
+import jakarta.el.ELContext;
+import jakarta.el.ELResolver;
 
 /**
  * Resolves the top-level EL names of BPMN expressions against the WIRED TASKS of VanillaBP.
