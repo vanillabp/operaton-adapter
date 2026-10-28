@@ -199,10 +199,8 @@ public class OperatonUnclaimedProcessesAreLeftAloneTest {
       final ActivityImpl userTask) {
 
     final var taskDefinition = ((UserTaskActivityBehavior) userTask.getActivityBehavior()).getTaskDefinition();
-    return taskDefinition
-        .getBuiltinTaskListeners()
-        .getOrDefault(TaskListener.EVENTNAME_CREATE, List.of())
-        .contains(userTaskEventListener);
+    final var builtIn = taskDefinition.getBuiltinTaskListenersForEvent(TaskListener.EVENTNAME_CREATE);
+    return (builtIn != null) && builtIn.contains(userTaskEventListener);
 
   }
 

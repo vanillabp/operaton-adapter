@@ -15,7 +15,7 @@ import org.operaton.bpm.engine.ProcessEngine;
 import org.operaton.bpm.engine.delegate.DelegateTask;
 import org.operaton.bpm.engine.delegate.TaskListener;
 import org.operaton.bpm.engine.impl.bpmn.behavior.UserTaskActivityBehavior;
-import org.operaton.bpm.engine.impl.bpmn.parser.AbstractBpmnParseListener;
+import org.operaton.bpm.engine.impl.bpmn.parser.BpmnParseListener;
 import org.operaton.bpm.engine.impl.cfg.StandaloneProcessEngineConfiguration;
 import org.operaton.bpm.engine.impl.pvm.process.ActivityImpl;
 import org.operaton.bpm.engine.impl.pvm.process.ScopeImpl;
@@ -75,7 +75,7 @@ public class OperatonMultiInstancesAtAUserTaskTest {
    * Attaches that listener to every user task of the deployed models. That is where
    * {@code OperatonAsyncBpmnParseListener} attaches the listener of this adapter.
    */
-  private static class ListeningToEveryUserTask extends AbstractBpmnParseListener {
+  private static class ListeningToEveryUserTask implements BpmnParseListener {
 
     @Override
     public void parseUserTask(

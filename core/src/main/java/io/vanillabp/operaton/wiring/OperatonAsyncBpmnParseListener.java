@@ -1,6 +1,6 @@
 package io.vanillabp.operaton.wiring;
 
-import org.operaton.bpm.engine.impl.bpmn.parser.AbstractBpmnParseListener;
+import org.operaton.bpm.engine.impl.bpmn.parser.BpmnParseListener;
 import org.operaton.bpm.engine.impl.pvm.process.ActivityImpl;
 import org.operaton.bpm.engine.impl.pvm.process.ScopeImpl;
 import org.operaton.bpm.engine.impl.util.xml.Element;
@@ -24,7 +24,7 @@ import org.operaton.bpm.engine.impl.util.xml.Element;
  * it, and a process somebody else deployed into the same engine. See decision 43 of
  * the Camunda 7 adapter's {@code DECISIONS.md}.
  */
-public class OperatonAsyncBpmnParseListener extends AbstractBpmnParseListener {
+public class OperatonAsyncBpmnParseListener implements BpmnParseListener {
 
   private static final org.slf4j.Logger log = org.slf4j.LoggerFactory
       .getLogger(OperatonAsyncBpmnParseListener.class);
