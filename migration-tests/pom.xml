@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>io.vanillabp</groupId>
+    <artifactId>operaton-adapter-parent</artifactId>
+    <version>2.0.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>operaton-adapter-migration-tests</artifactId>
+  <name>VanillaBP Operaton adapter - Migration tests</name>
+  <description>This adapter next to the Camunda 7 adapter in one Spring Boot application, and an application which moves its Camunda 7 database over to Operaton.</description>
+  <licenses>
+    <license>
+      <name>Apache License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>VanillaBP</id>
+      <organization>Phactum Softwareentwicklung GmbH</organization>
+      <organizationUrl>https://www.phactum.at</organizationUrl>
+    </developer>
+  </developers>
+  <properties>
+    <!-- test-only module: no artifact to publish -->
+    <maven.install.skip>true</maven.install.skip>
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <central.publishing.excluded>${project.artifactId}</central.publishing.excluded>
+    <maven.javadoc.skip>true</maven.javadoc.skip>
+    <!-- the Camunda 7 adapter these tests run next to this one, see decision 7 in the
+         repository's DECISIONS.md -->
+    <camunda7-adapter.version>2.0.0-SNAPSHOT</camunda7-adapter.version>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>io.vanillabp</groupId>
+      <artifactId>operaton-adapter-spring-boot</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.camunda.community.vanillabp</groupId>
+      <artifactId>camunda7-adapter-spring-boot</artifactId>
+      <version>${camunda7-adapter.version}</version>
+      <scope>test</scope>
+      <!-- Camunda 7.24 brings the FEEL engine as 'feel-engine:scala-shaded' 1.19.3, Operaton
+           2.2 as the plain 'feel-engine' 1.22.1 with Scala beside it. Both jars hold the
+           classes of 'org.camunda.feel', in different versions, and the JVM loads whichever
+           comes first. Camunda's engine then does not even start. So Camunda's copy goes, and
+           the Camunda 7 engine evaluates its decisions with the older FEEL implementation,
+           which needs no Scala. MigrationTestApplication switches it on. The README of this
+           repository says the same for an application, in "Migrating from Camunda 7". -->
+      <exclusions>
+        <exclusion>
+          <groupId>org.camunda.feel</groupId>
+          <artifactId>feel-engine</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.vanillabp</groupId>
+      <artifactId>test-utils</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+  <!-- The snapshots of the Camunda 7 adapter are only in the GitHub Packages registry of the
+       Camunda Community Hub. Reading it needs a login even for a public package, so a build
+       needs a server entry with this id (see CONTRIBUTING.md). The entry goes away once the
+       Camunda 7 adapter has a release on Maven Central. -->
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>false</enabled>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+      <id>camunda-community-hub-vanillabp-camunda7-adapter</id>
+      <url>https://maven.pkg.github.com/camunda-community-hub/vanillabp-camunda7-adapter</url>
+    </repository>
+  </repositories>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <skipIfEmpty>true</skipIfEmpty>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

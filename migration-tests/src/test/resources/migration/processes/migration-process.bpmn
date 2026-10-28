@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" id="Definitions_Migration" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="MigrationProcess" isExecutable="true" camunda:historyTimeToLive="P1D">
+    <bpmn:startEvent id="Start">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="Start" targetRef="Check" />
+    <bpmn:serviceTask id="Check" camunda:expression="${check}">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Check" targetRef="Rate" />
+    <bpmn:businessRuleTask id="Rate" camunda:decisionRef="sizeOfTheAmount" camunda:decisionRefBinding="deployment" camunda:mapDecisionResult="singleEntry" camunda:resultVariable="size">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:businessRuleTask>
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Rate" targetRef="Approve" />
+    <bpmn:userTask id="Approve" camunda:formKey="approve">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sequenceFlow id="Flow_4" sourceRef="Approve" targetRef="Finish" />
+    <bpmn:serviceTask id="Finish" camunda:expression="${finish}">
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_5" sourceRef="Finish" targetRef="End" />
+    <bpmn:endEvent id="End">
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+    </bpmn:endEvent>
+  </bpmn:process>
+</bpmn:definitions>

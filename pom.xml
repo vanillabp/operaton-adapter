@@ -52,6 +52,7 @@
     <module>quarkus/deployment</module>
     <module>quarkus/integration-tests</module>
     <module>integration-tests</module>
+    <module>migration-tests</module>
     <module>test-coverage-report</module>
   </modules>
 

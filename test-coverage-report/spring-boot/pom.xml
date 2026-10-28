@@ -38,6 +38,14 @@
            artifactId and still picks up its 'jacoco.exec'. -->
       <type>pom</type>
     </dependency>
+    <dependency>
+      <groupId>io.vanillabp</groupId>
+      <artifactId>operaton-adapter-migration-tests</artifactId>
+      <version>${project.version}</version>
+      <!-- the tests which run the Camunda 7 adapter next to this one, a module only this
+           repository has. Test-only as well, so the POM, like above. -->
+      <type>pom</type>
+    </dependency>
   </dependencies>
 
   <build>
