@@ -69,6 +69,14 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public final class OperatonIdentifiersTheEngineHolds {
 
+  /**
+   * The adapter type of the Camunda 7 adapter. An application which switches its database
+   * from that adapter to this one brings deployments with the source
+   * <code>camunda7:&lt;id&gt;</code> along. It is written as text, because the Camunda 7
+   * adapter is no dependency of this one.
+   */
+  static final String CAMUNDA7_ADAPTER_TYPE = "camunda7";
+
   private OperatonIdentifiersTheEngineHolds() {
   }
 
@@ -342,6 +350,23 @@ public final class OperatonIdentifiersTheEngineHolds {
     }
 
     /**
+     * Whether the source names a VanillaBP adapter of this engine's database. That is this
+     * adapter, and the Camunda 7 adapter, which wrote <code>camunda7:&lt;id&gt;</code>. Operaton
+     * runs on the database of Camunda 7 as it is. So after an application switched from the
+     * Camunda 7 adapter to this one, its earlier deployments carry the old source, and they
+     * are its own history (see decision 6 in the repository's DECISIONS.md).
+     */
+    private static boolean deployedByThisAdapterOrItsCamunda7Predecessor(
+        final String source) {
+
+      return (source != null) && (source.startsWith(OperatonDeploymentService.ADAPTER_TYPE
+          + ":") || source.startsWith(
+              CAMUNDA7_ADAPTER_TYPE
+                  + ":"));
+
+    }
+
+    /**
      * The sentence which the core puts behind "is already held by". It also says how sure
      * this adapter is that the holder is somebody else.
      */
@@ -349,10 +374,8 @@ public final class OperatonIdentifiersTheEngineHolds {
         final Deployment deployment) {
 
       final var source = deployment.getSource();
-      final var deployedByAVanillaBpAdapter = (source != null) && source
-          .startsWith(OperatonDeploymentService.ADAPTER_TYPE
-              + ":");
-      final var heldBy = "Camunda deployment '%s' (source '%s', deployed at %s)"
+      final var deployedByAVanillaBpAdapter = deployedByThisAdapterOrItsCamunda7Predecessor(source);
+      final var heldBy = "Operaton deployment '%s' (source '%s', deployed at %s)"
           .formatted(
               deployment.getName() != null
                   ? deployment.getName()
@@ -364,7 +387,7 @@ public final class OperatonIdentifiersTheEngineHolds {
       return new Holder(
           deployedByAVanillaBpAdapter
               ? heldBy
-                  + ", which a VanillaBP Operaton adapter deployed under another name"
+                  + ", which a VanillaBP adapter for Operaton or Camunda 7 deployed under another name"
               : heldBy
                   + ", which nothing of this workflow module deployed",
           // a source which names an Operaton adapter of VanillaBP may be this very
