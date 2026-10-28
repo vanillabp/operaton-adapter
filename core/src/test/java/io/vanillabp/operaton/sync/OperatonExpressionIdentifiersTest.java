@@ -15,6 +15,7 @@ import org.operaton.bpm.model.bpmn.Bpmn;
 import org.operaton.bpm.model.bpmn.BpmnModelInstance;
 
 import io.vanillabp.integration.adapter.spi.expressions.ModelExpression;
+import io.vanillabp.operaton.sync.OperatonExpressionIdentifiers.Placement;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**

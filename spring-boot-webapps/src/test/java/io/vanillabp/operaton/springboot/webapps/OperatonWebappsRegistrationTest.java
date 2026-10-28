@@ -18,6 +18,9 @@ import org.operaton.bpm.container.RuntimeContainerDelegate;
 import org.operaton.bpm.engine.ProcessEngine;
 import org.springframework.beans.factory.ObjectProvider;
 
+import io.vanillabp.operaton.springboot.webapps.OperatonWebappsProperties.AdapterSection;
+import io.vanillabp.operaton.springboot.webapps.OperatonWebappsProperties.AdminUser;
+import io.vanillabp.operaton.springboot.webapps.OperatonWebappsProperties.Webapps;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 import io.vanillabp.operaton.springboot.engine.OperatonEngineHolder;
 
