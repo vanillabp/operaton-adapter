@@ -41,10 +41,6 @@ import org.operaton.bpm.model.bpmn.instance.UserTask;
  */
 public final class OperatonTaskDefinitions {
 
-  private static final String CAMUNDA_NS = "http://camunda.org/schema/1.0/bpmn";
-
-  private static final String FORM_KEY_ATTRIBUTE = "formKey";
-
   private OperatonTaskDefinitions() {
   }
 
@@ -68,9 +64,9 @@ public final class OperatonTaskDefinitions {
   /**
    * The form key as the modeller wrote it, read from the model.
    * <p>
-   * It is read by namespace and name, not through the typed getter of the Camunda model API.
-   * The Camunda 7 forks renamed those getters along with their packages. An attribute read by
-   * namespace and name survives that rename.
+   * It is read through the typed getter, which reads Operaton's namespace and the Camunda one.
+   * A user task drawn with the Operaton Modeler and one written for Camunda 7 both have their
+   * form key found (see decision 2 in the repository's DECISIONS.md).
    *
    * @param userTask The user task of a BPMN model, or <code>null</code>
    * @return The written form key, or <code>null</code> where the model carries none
@@ -80,7 +76,7 @@ public final class OperatonTaskDefinitions {
 
     return userTask == null
         ? null
-        : userTask.getAttributeValueNs(CAMUNDA_NS, FORM_KEY_ATTRIBUTE);
+        : userTask.getOperatonFormKey();
 
   }
 
