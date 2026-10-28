@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-import org.operaton.bpm.engine.impl.bpmn.parser.AbstractBpmnParseListener;
 import org.operaton.bpm.engine.impl.bpmn.parser.BpmnParseListener;
 import org.operaton.bpm.engine.impl.history.event.HistoricProcessInstanceEventEntity;
 import org.operaton.bpm.engine.impl.history.event.HistoryEvent;
@@ -37,7 +36,7 @@ public class RecordingEngineCustomizer implements OperatonEngineCustomizer {
       final String adapterId) {
 
     askedAdapterIds.add(adapterId);
-    return List.of(new AbstractBpmnParseListener() {
+    return List.of(new BpmnParseListener() {
 
       @Override
       public void parseServiceTask(

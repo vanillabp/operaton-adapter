@@ -219,7 +219,7 @@ public interface VanillaBpOperatonProperties {
   interface OperatonEnginePluginKeys {
 
     /**
-     * The plugin's class, e.g. <code>org.camunda.xstream.ProcessEnginePlugin</code>.
+     * The plugin's class, e.g. <code>org.operaton.spin.plugin.impl.SpinProcessEnginePlugin</code>.
      *
      * @return The class name, empty where the section names none
      */
@@ -330,8 +330,7 @@ public interface VanillaBpOperatonProperties {
 
     /**
      * OPTIONAL serialization format for a shared value which has no variable type in the
-     * engine, e.g. <code>application/json</code> (the SPIN JSON dataformat) or
-     * <code>application/xstream</code> (camunda-xstream). It is applied to the engine's
+     * engine, e.g. <code>application/json</code> (the SPIN JSON dataformat). It is applied to the engine's
      * <code>defaultSerializationFormat</code> and to the variables VanillaBP writes. A
      * workflow module or a workflow may override it (see
      * {@link VanillaBpOperatonProperties#workflowModules()}). The matching dataformat is a

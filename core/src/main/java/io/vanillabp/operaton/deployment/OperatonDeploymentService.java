@@ -38,6 +38,7 @@ import io.vanillabp.operaton.sync.OperatonSerializationRoundTrip;
 import io.vanillabp.operaton.wiring.OperatonAllowListenersResolver;
 import io.vanillabp.operaton.wiring.OperatonCallActivities;
 import io.vanillabp.operaton.wiring.OperatonConfiguredTenant;
+import io.vanillabp.operaton.wiring.OperatonExtensionNamespaces;
 import io.vanillabp.operaton.wiring.OperatonListeners;
 import io.vanillabp.operaton.wiring.OperatonProcessVersions;
 import io.vanillabp.operaton.wiring.OperatonScoping;
@@ -378,14 +379,6 @@ public class OperatonDeploymentService implements AdapterDeploymentService<BpmnM
             tenantIdOf(anotherWorkflowModuleId));
 
   }
-
-  /**
-   * The namespace of Camunda's BPMN extension attributes. It is kept as ONE constant, and
-   * the attributes are read through the namespace ({@code getAttributeValueNs}). This keeps
-   * the code portable to forks. Operaton and CIB seven renamed the typed extension getters,
-   * but both accept the attribute namespace.
-   */
-  public static final String CAMUNDA_NS = "http://camunda.org/schema/1.0/bpmn";
 
   private static final Pattern EL_PATTERN = Pattern.compile("^[#$]\\{([^}]+)}$");
 
@@ -1518,9 +1511,9 @@ public class OperatonDeploymentService implements AdapterDeploymentService<BpmnM
       final OperatonProcessingContext context) {
     serviceLikeTasksOf(model, scopedBpmnProcessId)
         .forEach(task -> {
-          final var delegateExpression = task.getAttributeValueNs(CAMUNDA_NS, "delegateExpression");
-          final var expression = task.getAttributeValueNs(CAMUNDA_NS, "expression");
-          final var topic = task.getAttributeValueNs(CAMUNDA_NS, "topic");
+          final var delegateExpression = OperatonExtensionNamespaces.attributeOf(task, "delegateExpression");
+          final var expression = OperatonExtensionNamespaces.attributeOf(task, "expression");
+          final var topic = OperatonExtensionNamespaces.attributeOf(task, "topic");
           if ((topic != null) && !topic.isBlank()) {
             if (connectables == null) {
               // the refusal below is about a model which is being DEPLOYED. This model
@@ -1573,7 +1566,7 @@ public class OperatonDeploymentService implements AdapterDeploymentService<BpmnM
           // @WorkflowTask method would make DMN unusable on this adapter. A business rule
           // task wired by an expression is an ordinary VanillaBP task. It falls through to
           // the branches below
-          final var decisionRef = task.getAttributeValueNs(CAMUNDA_NS, "decisionRef");
+          final var decisionRef = OperatonExtensionNamespaces.attributeOf(task, "decisionRef");
           if ((decisionRef != null) && !decisionRef.isBlank()) {
             return;
           }

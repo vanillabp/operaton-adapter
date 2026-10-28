@@ -1,14 +1,12 @@
 package io.vanillabp.operaton.it;
 
 import java.util.LinkedHashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.operaton.bpm.engine.delegate.TaskListener;
 import org.operaton.bpm.engine.impl.bpmn.behavior.UserTaskActivityBehavior;
-import org.operaton.bpm.engine.impl.bpmn.parser.AbstractBpmnParseListener;
 import org.operaton.bpm.engine.impl.bpmn.parser.BpmnParseListener;
 import org.operaton.bpm.engine.impl.history.event.HistoricProcessInstanceEventEntity;
 import org.operaton.bpm.engine.impl.history.event.HistoryEvent;
@@ -63,7 +61,7 @@ public class RecordingEngineCustomizer implements OperatonEngineCustomizer {
       final String adapterId) {
 
     askedAdapterIds.add(adapterId);
-    return List.of(new AbstractBpmnParseListener() {
+    return List.of(new BpmnParseListener() {
 
       @Override
       public void parseUserTask(
@@ -74,10 +72,8 @@ public class RecordingEngineCustomizer implements OperatonEngineCustomizer {
         final var taskDefinition = ((UserTaskActivityBehavior) activity.getActivityBehavior()).getTaskDefinition();
         final var where = "%s/%s".formatted(adapterId, activity.getId());
         parsedUserTasks.add(where);
-        final var wiredByVanillaBp = taskDefinition
-            .getBuiltinTaskListeners()
-            .getOrDefault(TaskListener.EVENTNAME_CREATE, new LinkedList<>());
-        if (!wiredByVanillaBp.isEmpty()) {
+        final var wiredByVanillaBp = taskDefinition.getBuiltinTaskListenersForEvent(TaskListener.EVENTNAME_CREATE);
+        if ((wiredByVanillaBp != null) && !wiredByVanillaBp.isEmpty()) {
           userTasksAlreadyWiredByVanillaBp.add(where);
         }
         taskDefinition

@@ -4,6 +4,7 @@ import java.util.stream.Stream;
 
 import org.operaton.bpm.engine.delegate.DelegateExecution;
 import org.operaton.bpm.model.bpmn.BpmnModelInstance;
+import org.operaton.bpm.model.bpmn.impl.BpmnModelConstants;
 import org.operaton.bpm.model.bpmn.instance.CallActivity;
 import org.operaton.bpm.model.bpmn.instance.ExtensionElements;
 import org.operaton.bpm.model.bpmn.instance.FlowElement;
@@ -121,9 +122,13 @@ public final class OperatonCallActivities {
           if (passesBusinessKeyAlready(callActivity)) {
             return;
           }
-          final var camundaIn = model.newInstance(OperatonIn.class);
-          camundaIn.setOperatonBusinessKey(PARENT_BUSINESS_KEY_EXPRESSION);
-          extensionElementsOf(model, callActivity).addChildElement(camundaIn);
+          // in the namespace of the modeller's own mappings, or the engine would read only
+          // this one (see decision 2 in the repository's DECISIONS.md)
+          final var businessKeyIn = OperatonExtensionNamespaces
+              .newChildOf(model, extensionElementsOf(model, callActivity), OperatonIn.class);
+          OperatonExtensionNamespaces
+              .setAttribute(businessKeyIn, BpmnModelConstants.OPERATON_ATTRIBUTE_BUSINESS_KEY,
+                  PARENT_BUSINESS_KEY_EXPRESSION);
           log.debug(
               "Operaton: call activity '{}' of BPMN process '{}' (workflow module '{}') passes the "
                   + "business key to '{}' - both work on the same workflow aggregate",
@@ -344,10 +349,12 @@ public final class OperatonCallActivities {
     if (continuesTheCallersWorkflowAggregate(callActivity)) {
       return;
     }
-    final var property = model.newInstance(OperatonProperty.class);
-    property.setOperatonName(SAME_WORKFLOW_AGGREGATE_PROPERTY);
-    property.setOperatonValue(Boolean.TRUE.toString());
-    propertiesContainerOf(model, callActivity).getOperatonProperties().add(property);
+    final var property = OperatonExtensionNamespaces
+        .newChildOf(model, propertiesContainerOf(model, callActivity), OperatonProperty.class);
+    OperatonExtensionNamespaces
+        .setAttribute(property, BpmnModelConstants.OPERATON_ATTRIBUTE_NAME, SAME_WORKFLOW_AGGREGATE_PROPERTY);
+    OperatonExtensionNamespaces
+        .setAttribute(property, BpmnModelConstants.OPERATON_ATTRIBUTE_VALUE, Boolean.TRUE.toString());
 
   }
 
@@ -379,9 +386,7 @@ public final class OperatonCallActivities {
     if (!existing.isEmpty()) {
       return existing.getFirst();
     }
-    final var properties = model.newInstance(OperatonProperties.class);
-    extensionElements.addChildElement(properties);
-    return properties;
+    return OperatonExtensionNamespaces.newChildOf(model, extensionElements, OperatonProperties.class);
 
   }
 

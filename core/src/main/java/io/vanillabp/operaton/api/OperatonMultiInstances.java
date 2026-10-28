@@ -63,16 +63,6 @@ import io.vanillabp.operaton.wiring.OperatonTaskRegistry;
  */
 public final class OperatonMultiInstances {
 
-  /**
-   * The attribute naming the variable each iteration gets its item in. It is read by
-   * namespace and name, not through the typed getter of the Camunda model API. The Operaton
-   * forks renamed those getters along with their packages. An attribute read by namespace and
-   * name survives that rename.
-   */
-  private static final String ELEMENT_VARIABLE_ATTRIBUTE = "elementVariable";
-
-  private static final String CAMUNDA_NS = "http://camunda.org/schema/1.0/bpmn";
-
   private OperatonMultiInstances() {
   }
 
@@ -83,8 +73,10 @@ public final class OperatonMultiInstances {
    * <code>null</code>. The deployment refuses such a pairing, see
    * {@code OperatonMultiInstanceItems}.
    * <p>
-   * It is published here because the deployment reads the same attribute. And reading an
-   * attribute by namespace is the one part of this class which a Camunda 7 fork changes.
+   * It is published here because the deployment reads the same attribute. The typed getter
+   * reads Operaton's namespace and the Camunda one, so a model drawn with the Operaton Modeler
+   * and a model written for Camunda 7 both name their variable here (see decision 2 in the
+   * repository's DECISIONS.md).
    *
    * @param loop The multi-instance characteristics of the element
    * @return The variable name, or <code>null</code>
@@ -94,7 +86,7 @@ public final class OperatonMultiInstances {
 
     return loop == null
         ? null
-        : loop.getAttributeValueNs(CAMUNDA_NS, ELEMENT_VARIABLE_ATTRIBUTE);
+        : loop.getOperatonElementVariable();
 
   }
 

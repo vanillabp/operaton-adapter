@@ -2,19 +2,20 @@ package io.vanillabp.operaton.springboot.webapps;
 
 import java.util.Map;
 
+import org.operaton.bpm.spring.boot.starter.property.OperatonBpmProperties;
 import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 
 /**
- * Switches off Camunda's own engine auto-configuration, which arrives with the webapp
+ * Switches off Operaton's own engine auto-configuration, which arrives with the webapp
  * starter this module depends on.
  *
  * <p>
  * That auto-configuration always builds a {@code ProcessEngineFactoryBean}. So an
  * application would end up with two engines on one datasource. One is the engine VanillaBP
- * built and configured. The other is one Camunda built from <code>camunda.bpm.*</code>.
+ * built and configured. The other is one Operaton built from <code>operaton.bpm.*</code>.
  * Both would run a job executor, and the second one would take the jobs of the first. The
  * webapps themselves do not need it. They find engines through the
  * {@code RuntimeContainerDelegate}, and {@link OperatonWebappsRegistration} registers
@@ -37,7 +38,14 @@ public class OperatonWebappsEnvironmentPostProcessor implements EnvironmentPostP
 
   }
 
-  static final String CAMUNDA_BPM_ENABLED = "camunda.bpm.enabled";
+  /**
+   * Taken from Operaton's own properties class rather than written out. Operaton reads
+   * <code>operaton.bpm.enabled</code>, and it ignores the <code>camunda.bpm.enabled</code>
+   * of the Camunda 7 adapter, so a constant written as text was the one place where the
+   * generated code switched nothing off.
+   */
+  static final String OPERATON_BPM_ENABLED = OperatonBpmProperties.PREFIX
+      + ".enabled";
 
   private static final String PROPERTY_SOURCE_NAME = "vanillabp-operaton-webapps";
 
@@ -46,18 +54,18 @@ public class OperatonWebappsEnvironmentPostProcessor implements EnvironmentPostP
       final ConfigurableEnvironment environment,
       final SpringApplication application) {
 
-    final var configured = environment.getProperty(CAMUNDA_BPM_ENABLED);
+    final var configured = environment.getProperty(OPERATON_BPM_ENABLED);
 
     if (Boolean.parseBoolean(configured)) {
 
       throw new IllegalStateException(
           """
               '%s' is set to true, but VanillaBP builds and owns the Operaton engines. \
-              Camunda's engine auto-configuration would add a second engine on the same \
+              Operaton's engine auto-configuration would add a second engine on the same \
               datasource, whose job executor would acquire the jobs of the first one. \
               Remove the property (the webapps do not need it) and configure the engine \
               at 'vanillabp.adapters.<id>.*' instead."""
-              .formatted(CAMUNDA_BPM_ENABLED));
+              .formatted(OPERATON_BPM_ENABLED));
 
     }
 
@@ -69,7 +77,7 @@ public class OperatonWebappsEnvironmentPostProcessor implements EnvironmentPostP
     environment
         .getPropertySources()
         .addLast(new MapPropertySource(
-            PROPERTY_SOURCE_NAME, Map.of(CAMUNDA_BPM_ENABLED, "false")));
+            PROPERTY_SOURCE_NAME, Map.of(OPERATON_BPM_ENABLED, "false")));
 
   }
 

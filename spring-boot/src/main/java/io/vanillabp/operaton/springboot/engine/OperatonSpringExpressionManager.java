@@ -1,13 +1,13 @@
 package io.vanillabp.operaton.springboot.engine;
 
 import org.operaton.bpm.engine.spring.SpringExpressionManager;
-import org.operaton.bpm.impl.juel.jakarta.el.CompositeELResolver;
-import org.operaton.bpm.impl.juel.jakarta.el.ELResolver;
 import org.springframework.context.ApplicationContext;
 
 import io.vanillabp.integration.adapter.spi.workflowtask.WorkflowTaskInvoker;
 import io.vanillabp.operaton.wiring.OperatonTaskELResolver;
 import io.vanillabp.operaton.wiring.OperatonTaskRegistry;
+import jakarta.el.CompositeELResolver;
+import jakarta.el.ELResolver;
 
 /**
  * Camunda's Spring-bean-aware expression manager extended by VanillaBP's

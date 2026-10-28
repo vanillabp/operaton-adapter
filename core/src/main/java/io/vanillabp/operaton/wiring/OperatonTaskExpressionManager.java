@@ -1,10 +1,10 @@
 package io.vanillabp.operaton.wiring;
 
 import org.operaton.bpm.engine.impl.el.JuelExpressionManager;
-import org.operaton.bpm.impl.juel.jakarta.el.CompositeELResolver;
-import org.operaton.bpm.impl.juel.jakarta.el.ELResolver;
 
 import io.vanillabp.integration.adapter.spi.workflowtask.WorkflowTaskInvoker;
+import jakarta.el.CompositeELResolver;
+import jakarta.el.ELResolver;
 
 /**
  * The engine's default (JUEL) expression manager, extended by VanillaBP's

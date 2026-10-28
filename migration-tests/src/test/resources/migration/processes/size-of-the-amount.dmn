@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/" id="sizeOfTheAmountDefinitions" name="Size of the amount" namespace="http://vanillabp.io/migration">
+  <decision id="sizeOfTheAmount" name="Size of the amount">
+    <decisionTable id="sizeOfTheAmountTable" hitPolicy="UNIQUE">
+      <input id="amountInput" label="Amount">
+        <inputExpression id="amountInputExpression" typeRef="integer">
+          <text>amount</text>
+        </inputExpression>
+      </input>
+      <output id="sizeOutput" label="Size" name="size" typeRef="string" />
+      <rule id="big">
+        <inputEntry id="bigInput">
+          <text>&gt; 100</text>
+        </inputEntry>
+        <outputEntry id="bigOutput">
+          <text>"big"</text>
+        </outputEntry>
+      </rule>
+      <rule id="small">
+        <inputEntry id="smallInput">
+          <text>&lt;= 100</text>
+        </inputEntry>
+        <outputEntry id="smallOutput">
+          <text>"small"</text>
+        </outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+</definitions>

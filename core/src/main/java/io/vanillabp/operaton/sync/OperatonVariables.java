@@ -37,9 +37,7 @@ import org.slf4j.LoggerFactory;
  * <code>${total &gt; 100}</code> compares numbers, whatever the class is. The format also
  * keeps dot-notated expressions working. The engine deserializes the variable and EL
  * navigates it, so <code>${order.customer.name}</code> reads what it says. The application
- * chooses the format: <code>application/json</code> (the SPIN JSON dataformat),
- * <code>application/xstream</code>
- * (<a href="https://github.com/RasPelikan/camunda-xstream">camunda-xstream</a>) or any
+ * chooses the format: <code>application/json</code> (the SPIN JSON dataformat) or any
  * dataformat it registers. The adapter only passes it on.</li>
  * </ul>
  * Without a configured format, the engine falls back to Java serialization. Nobody can read
@@ -180,7 +178,7 @@ public final class OperatonVariables {
             workflow module or per adapter:
             vanillabp.adapters.<id>.serialization-format: application/json
             and put the matching dataformat on the classpath (the SPIN JSON dataformat for \
-            'application/json', camunda-xstream for 'application/xstream'). Where the value is a \
+            'application/json'). Where the value is a \
             structure, a format keeps dot-notated expressions working as well, since the engine \
             deserializes the variable before evaluating '{}.something'.""",
         name,

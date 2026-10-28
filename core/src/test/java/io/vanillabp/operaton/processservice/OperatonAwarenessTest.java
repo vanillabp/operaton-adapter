@@ -15,13 +15,13 @@ import org.operaton.bpm.engine.RuntimeService;
 import org.operaton.bpm.engine.TaskService;
 import org.operaton.bpm.engine.runtime.ExecutionQuery;
 import org.operaton.bpm.engine.task.TaskQuery;
-import org.operaton.bpm.impl.juel.jakarta.el.ELException;
-import org.operaton.bpm.impl.juel.jakarta.el.MethodNotFoundException;
-import org.operaton.bpm.impl.juel.jakarta.el.PropertyNotFoundException;
 
 import io.vanillabp.integration.adapter.spi.WorkflowAwareness;
 import io.vanillabp.integration.spi.AggregatePersistenceAware;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
+import jakarta.el.ELException;
+import jakarta.el.MethodNotFoundException;
+import jakarta.el.PropertyNotFoundException;
 
 /**
  * What the adapter answers when its engine cannot answer at all, and how it classifies a

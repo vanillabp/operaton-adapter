@@ -8,22 +8,17 @@ import org.operaton.bpm.container.impl.metadata.PropertyHelper;
 import org.operaton.bpm.engine.impl.cfg.ProcessEnginePlugin;
 
 /**
- * Builds the engine plugins an adapter id configures. This is how a dataformat
- * (camunda-xstream, SPIN) or any other Camunda plugin gets into an embedded engine which
- * VanillaBP builds:
+ * Builds the engine plugins an adapter id configures. This is how a dataformat such as
+ * SPIN, or any other Operaton plugin, gets into an embedded engine which VanillaBP builds:
  *
  * <pre>
  * vanillabp:
  *   adapters:
  *     operaton:
- *       serialization-format: application/xstream
+ *       serialization-format: application/json
  *       engine-plugins:
- *         xstream:
- *           plugin-class: org.camunda.xstream.ProcessEnginePlugin
- *           properties:
- *             encoding: UTF-8
- *             ignore-unknown-elements: true
- *             allowed-types: my.project.**,other.project.**
+ *         spin:
+ *           plugin-class: org.operaton.spin.plugin.impl.SpinProcessEnginePlugin
  * </pre>
  *
  * The application names the section, because a class name has dots, and both configuration
@@ -37,7 +32,7 @@ import org.operaton.bpm.engine.impl.cfg.ProcessEnginePlugin;
  * A plugin configured here belongs to one adapter id. A side-by-side migration needs that: two
  * embedded engines, each with the plugins its models require. An application may instead
  * contribute a plugin as a BEAN. That is easier for a plugin which configures itself from the
- * application's own properties, as camunda-xstream does on Spring Boot. Such beans apply to
+ * application's own properties. Such beans apply to
  * every engine this adapter builds.
  * <p>
  * Decision 9 in the Camunda 7 adapter's DECISIONS.md says why an embedded engine of this adapter
@@ -88,7 +83,7 @@ public final class OperatonEnginePlugins {
           """
               The engine plugin '%s' configured at 'vanillabp.adapters.%s.engine-plugins' names no \
               class! Set 'vanillabp.adapters.%s.engine-plugins.%s.plugin-class' to the plugin's \
-              class, e.g. 'org.camunda.xstream.ProcessEnginePlugin'."""
+              class, e.g. 'org.operaton.spin.plugin.impl.SpinProcessEnginePlugin'."""
               .formatted(name, adapterId, adapterId, name));
     }
     final var properties = configured.getProperties();
@@ -99,14 +94,15 @@ public final class OperatonEnginePlugins {
       throw new IllegalStateException(
           """
               The engine plugin class '%s' configured at 'vanillabp.adapters.%s.engine-plugins' is \
-              not on the classpath! Add the dependency providing it (e.g. 'org.camunda:camunda-xstream' \
-              for 'org.camunda.xstream.ProcessEnginePlugin'), or remove the section."""
+              not on the classpath! Add the dependency providing it (e.g. \
+              'org.operaton.bpm:operaton-engine-plugin-spin' for \
+              'org.operaton.spin.plugin.impl.SpinProcessEnginePlugin'), or remove the section."""
               .formatted(className, adapterId), notThere);
     }
     if (!ProcessEnginePlugin.class.isAssignableFrom(pluginClass)) {
       throw new IllegalStateException(
           """
-              The class '%s' configured at 'vanillabp.adapters.%s.engine-plugins' is not a Camunda \
+              The class '%s' configured at 'vanillabp.adapters.%s.engine-plugins' is not an Operaton \
               engine plugin! It has to implement %s."""
               .formatted(className, adapterId, ProcessEnginePlugin.class.getName()));
     }
@@ -136,7 +132,7 @@ public final class OperatonEnginePlugins {
       throw new IllegalStateException(
           """
               A property of the engine plugin '%s' configured at \
-              'vanillabp.adapters.%s.engine-plugins' was rejected by Camunda: %s. The keys are the \
+              'vanillabp.adapters.%s.engine-plugins' was rejected by Operaton: %s. The keys are the \
               plugin's own properties in kebab-case ('allowed-types' sets 'allowedTypes'), and the \
               plugin's documentation names them."""
               .formatted(className, adapterId, rejected.getMessage()), rejected);

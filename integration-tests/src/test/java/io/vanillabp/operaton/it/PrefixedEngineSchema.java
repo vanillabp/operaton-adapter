@@ -100,7 +100,7 @@ final class PrefixedEngineSchema {
   private static String ddlOf(
       final String component) {
 
-    final var resource = "org/camunda/bpm/engine/db/create/activiti.h2.create.%s.sql"
+    final var resource = "org/operaton/bpm/engine/db/create/activiti.h2.create.%s.sql"
         .formatted(component);
     try (InputStream in = ProcessEngine.class
         .getClassLoader()

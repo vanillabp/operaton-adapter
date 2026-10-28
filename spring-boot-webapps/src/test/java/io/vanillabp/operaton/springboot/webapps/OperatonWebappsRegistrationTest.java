@@ -20,6 +20,9 @@ import org.springframework.beans.factory.ObjectProvider;
 
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 import io.vanillabp.operaton.springboot.engine.OperatonEngineHolder;
+import io.vanillabp.operaton.springboot.webapps.OperatonWebappsProperties.AdapterSection;
+import io.vanillabp.operaton.springboot.webapps.OperatonWebappsProperties.AdminUser;
+import io.vanillabp.operaton.springboot.webapps.OperatonWebappsProperties.Webapps;
 
 /**
  * What the registration does with the engines it is given, without booting anything.

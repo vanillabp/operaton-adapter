@@ -121,7 +121,7 @@ public class OperatonSerializationRoundTripTest {
         .setJdbcUrl("jdbc:h2:mem:serialization-round-trip-%s;DB_CLOSE_DELAY=-1".formatted(System.nanoTime()));
     configuration.setJobExecutorActivate(false);
     configuration
-        .setCustomPostVariableSerializers(List.<TypedValueSerializer>of(new NumbersComeBackAsDoubles()));
+        .setCustomPostVariableSerializers(List.<TypedValueSerializer<?>>of(new NumbersComeBackAsDoubles()));
     engine = configuration.buildProcessEngine();
 
   }

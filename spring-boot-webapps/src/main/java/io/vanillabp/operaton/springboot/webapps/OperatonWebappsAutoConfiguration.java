@@ -12,7 +12,7 @@ import io.vanillabp.operaton.springboot.engine.OperatonEngineHolder;
 import io.vanillabp.operaton.springboot.processservice.OperatonProcessServiceConfiguration;
 
 /**
- * Serves Camunda's web applications at <code>/camunda</code> against the engines
+ * Serves Operaton's web applications at <code>/operaton</code> against the engines
  * VanillaBP built.
  *
  * <p>
@@ -20,12 +20,12 @@ import io.vanillabp.operaton.springboot.processservice.OperatonProcessServiceCon
  * </p>
  *
  * <ol>
- * <li>Camunda's webapp auto-configuration only applies when a {@link OperatonBpmProperties}
- * bean exists. That bean normally comes with Camunda's engine auto-configuration. This
+ * <li>Operaton's webapp auto-configuration only applies when a {@link OperatonBpmProperties}
+ * bean exists. That bean normally comes with Operaton's engine auto-configuration. This
  * module switches that one off, because it would build a second engine (see
  * {@link OperatonWebappsEnvironmentPostProcessor}). So this module adds the properties
  * bean itself. Its defaults are what the webapps need, including the path
- * <code>/camunda</code>.</li>
+ * <code>/operaton</code>.</li>
  * <li>The webapps find engines through the runtime container, not through beans. So
  * {@link OperatonWebappsRegistration} registers VanillaBP's engines there.</li>
  * </ol>
@@ -45,7 +45,7 @@ public class OperatonWebappsAutoConfiguration {
   }
 
   /**
-   * Registers VanillaBP's engines with the Camunda webapps, so Cockpit, Tasklist and Admin
+   * Registers VanillaBP's engines with the Operaton webapps, so Cockpit, Tasklist and Admin
    * show them. The engines are resolved lazily. They are built while the context
    * refreshes, and this bean is defined before that.
    *

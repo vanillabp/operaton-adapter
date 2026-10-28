@@ -121,7 +121,7 @@ public record OperatonInstanceIdentity(
                 - give each one its own database/schema by referencing an own datasource \
               ('vanillabp.adapters.<id>.data-source-name'), or
                 - let them share one datasource but use separate engine tables \
-              ('vanillabp.adapters.<id>.table-prefix'). Camunda does not create prefixed tables, so \
+              ('vanillabp.adapters.<id>.table-prefix'). Operaton does not create prefixed tables, so \
               such an id needs its tables created beforehand and \
               'vanillabp.adapters.<id>.database-schema-update: false',
               or remove all but one of these adapters."""

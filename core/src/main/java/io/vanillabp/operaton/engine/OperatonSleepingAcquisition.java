@@ -163,7 +163,7 @@ public class OperatonSleepingAcquisition extends SequentialJobAcquisitionRunnabl
       return;
     }
     try {
-      synchronized (MONITOR) {
+      synchronized (monitor) {
         if (isInterrupted) {
           return;
         }
@@ -171,7 +171,7 @@ public class OperatonSleepingAcquisition extends SequentialJobAcquisitionRunnabl
         if (wokenSinceTheCycleBegan.get()) {
           return;
         }
-        MONITOR.wait(millis);
+        monitor.wait(millis);
       }
     } catch (final InterruptedException e) {
       // the engine ends this loop through its own flag and a notification, not through an

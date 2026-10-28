@@ -16,6 +16,7 @@ import org.operaton.bpm.model.bpmn.BpmnModelInstance;
 
 import io.vanillabp.integration.adapter.spi.expressions.ModelExpression;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
+import io.vanillabp.operaton.sync.OperatonExpressionIdentifiers.Placement;
 
 /**
  * What the two startup checks are told about the expressions of a model. One of them gets
