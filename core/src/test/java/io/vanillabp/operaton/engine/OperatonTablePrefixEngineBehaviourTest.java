@@ -109,7 +109,7 @@ public class OperatonTablePrefixEngineBehaviourTest {
       final String database,
       final String component) {
 
-    final var resource = "org/camunda/bpm/engine/db/create/activiti.%s.create.%s.sql"
+    final var resource = "org/operaton/bpm/engine/db/create/activiti.%s.create.%s.sql"
         .formatted(database, component);
     try (InputStream in = ProcessEngine.class
         .getClassLoader()

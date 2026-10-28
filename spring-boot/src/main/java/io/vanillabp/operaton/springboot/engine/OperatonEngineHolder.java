@@ -323,7 +323,7 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
       configuration.setDatabaseTablePrefix(properties.getTablePrefix());
     }
 
-    // the engine plugins. This is how a serialization dataformat (camunda-xstream, SPIN)
+    // the engine plugins. This is how a serialization dataformat such as SPIN
     // reaches an embedded engine. There are two ways in. One is the configuration per
     // adapter id ('vanillabp.adapters.<id>.engine-plugins'), whose properties Camunda
     // applies itself. The other is a bean. That suits a plugin which configures itself

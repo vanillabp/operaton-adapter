@@ -68,7 +68,7 @@ public class OperatonWebappsTwoAdapterIdsTest {
             + port)
         .build()
         .get()
-        .uri("/camunda/api/engine/engine/")
+        .uri("/operaton/api/engine/engine/")
         .retrieve()
         .body(String.class);
 

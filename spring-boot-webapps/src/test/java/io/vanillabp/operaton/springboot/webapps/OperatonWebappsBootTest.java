@@ -31,7 +31,7 @@ import io.vanillabp.integration.test.utils.SuppressOutputExtension;
  * <p>
  * The interesting assertion is the engine NAME. It proves that Cockpit, Tasklist and
  * Admin talk to the engine VanillaBP built for the adapter id. They do not talk to an
- * engine which Camunda's own auto-configuration created.
+ * engine which Operaton's own auto-configuration created.
  * </p>
  */
 @ExtendWith(SuppressOutputExtension.class)
@@ -69,8 +69,8 @@ public class OperatonWebappsBootTest {
   }
 
   @Test
-  @DisplayName("The engine auto-configuration of Camunda is switched off in a booted application")
-  public void camundasOwnAutoConfigurationIsOff() {
+  @DisplayName("The engine auto-configuration of Operaton is switched off in a booted application")
+  public void operatonsOwnAutoConfigurationIsOff() {
 
     // the unit test of the post processor proves what it adds. This one proves that it
     // RUNS. The interface and the spring.factories key have to name the same type. We
@@ -78,18 +78,18 @@ public class OperatonWebappsBootTest {
     // with "not assignable to factory type". So this test catches a half-done migration
     assertEquals(
         "false",
-        context.getEnvironment().getProperty(OperatonWebappsEnvironmentPostProcessor.CAMUNDA_BPM_ENABLED),
-        "without it Camunda's starter builds a second engine on the same datasource");
+        context.getEnvironment().getProperty(OperatonWebappsEnvironmentPostProcessor.OPERATON_BPM_ENABLED),
+        "without it Operaton's starter builds a second engine on the same datasource");
 
   }
 
   @Test
-  @DisplayName("A visitor of /camunda is sent into a web application of this engine")
+  @DisplayName("A visitor of /operaton is sent into a web application of this engine")
   public void webappsAreServed() {
 
     final var entry = rest
         .get()
-        .uri("/camunda")
+        .uri("/operaton")
         .retrieve()
         .toBodilessEntity();
 
@@ -99,11 +99,11 @@ public class OperatonWebappsBootTest {
         .getHeaders()
         .getFirst(HttpHeaders.LOCATION);
     assertNotNull(location, "the web application should redirect somewhere");
-    assertTrue(location.contains("/camunda/app/"), location);
+    assertTrue(location.contains("/operaton/app/"), location);
 
     final var app = rest
         .get()
-        .uri("/camunda/app/cockpit/"
+        .uri("/operaton/app/cockpit/"
             + ENGINE
             + "/")
         .retrieve()
@@ -113,8 +113,8 @@ public class OperatonWebappsBootTest {
     assertTrue(
         app
             .getBody()
-            .contains("Camunda"),
-        () -> "the page should be a Camunda web application: "
+            .contains("Operaton"),
+        () -> "the page should be an Operaton web application: "
             + app.getBody());
 
   }
@@ -125,7 +125,7 @@ public class OperatonWebappsBootTest {
 
     final var engines = rest
         .get()
-        .uri("/camunda/api/engine/engine/")
+        .uri("/operaton/api/engine/engine/")
         .retrieve()
         .toEntity(String.class);
 
@@ -134,12 +134,12 @@ public class OperatonWebappsBootTest {
         + ENGINE
         + "\"}]", engines.getBody());
 
-    // Camunda's engine auto-configuration would have added a second engine on the
+    // Operaton's engine auto-configuration would have added a second engine on the
     // application's datasource. Its job executor would take VanillaBP's jobs
     assertEquals(
         0,
         context.getBeanNamesForType(ProcessEngineFactoryBean.class).length,
-        "Camunda's engine auto-configuration must not run");
+        "Operaton's engine auto-configuration must not run");
     assertEquals(
         1,
         context.getBeanProvider(io.vanillabp.operaton.springboot.engine.OperatonEngineHolder.class)
@@ -162,7 +162,7 @@ public class OperatonWebappsBootTest {
     // the first response hands out the token every modifying request has to carry
     final var page = rest
         .get()
-        .uri("/camunda/app/cockpit/"
+        .uri("/operaton/app/cockpit/"
             + ENGINE
             + "/")
         .retrieve()
@@ -185,7 +185,7 @@ public class OperatonWebappsBootTest {
 
     final var login = rest
         .post()
-        .uri("/camunda/api/admin/auth/user/"
+        .uri("/operaton/api/admin/auth/user/"
             + ENGINE
             + "/login/cockpit")
         .contentType(MediaType.APPLICATION_FORM_URLENCODED)

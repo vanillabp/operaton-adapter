@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
  * DB_SCHEMA_UPDATE_CREATE_DROP or DB_SCHEMA_UPDATE_TRUE, activiti will create the
  * database tables using the default names, regardless of the prefix configured
  * here."</i> The schema management runs the DDL files shipped with the engine
- * ({@code org/camunda/bpm/engine/db/create/activiti.<database>.create.<component>.sql})
+ * ({@code org/operaton/bpm/engine/db/create/activiti.<database>.create.<component>.sql})
  * statement by statement. Those statements name the tables verbatim, in every dialect.
  * {@code OperatonTablePrefixEngineBehaviourTest} records all of it.
  * <p>
@@ -118,7 +118,7 @@ public final class OperatonTablePrefixSchema {
       throw new IllegalStateException(
           """
               Operaton adapter '%s' is configured with the table prefix '%s' \
-              ('vanillabp.adapters.%s.table-prefix') and 'database-schema-update: %s'. Camunda \
+              ('vanillabp.adapters.%s.table-prefix') and 'database-schema-update: %s'. Operaton \
               cannot create prefixed tables: its schema management executes the DDL shipped with \
               the engine, and those statements name the tables verbatim, so it would create a set \
               of ACT_* tables in %s - not the tables this adapter id reads. %s"""
@@ -137,7 +137,7 @@ public final class OperatonTablePrefixSchema {
           """
               Operaton adapter '%s' runs on the table prefix '%s' \
               ('vanillabp.adapters.%s.table-prefix') in %s, but these tables of it are missing: \
-              %s. A prefixed engine needs a schema which is there already, because Camunda's own \
+              %s. A prefixed engine needs a schema which is there already, because Operaton's own \
               schema management ignores the prefix. %s"""
               .formatted(
                   adapterId,
@@ -169,8 +169,8 @@ public final class OperatonTablePrefixSchema {
         Two ways on:
           - create the tables of the prefix '%s' yourself and switch the engine's schema \
         management off ('vanillabp.adapters.%s.database-schema-update: false'). The statements \
-        come with the engine, under 'org/camunda/bpm/engine/db/create/' respectively as the \
-        Liquibase changelog 'org/camunda/bpm/engine/db/liquibase/camunda-changelog.xml' in \
+        come with the engine, under 'org/operaton/bpm/engine/db/create/' respectively as the \
+        Liquibase changelog 'org/operaton/bpm/engine/db/liquibase/operaton-changelog.xml' in \
         camunda-engine-<version>.jar, and the prefix has to be applied to them.
           - give this adapter id a database of its own \
         ('vanillabp.adapters.%s.data-source-name'), where the engine creates and upgrades its \

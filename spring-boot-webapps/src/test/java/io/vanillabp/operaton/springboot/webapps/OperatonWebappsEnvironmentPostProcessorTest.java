@@ -12,7 +12,7 @@ import org.springframework.mock.env.MockEnvironment;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
- * Camunda's engine auto-configuration must not run next to VanillaBP's engines. The post
+ * Operaton's engine auto-configuration must not run next to VanillaBP's engines. The post
  * processor decides that, before any bean is created.
  */
 @ExtendWith(SuppressOutputExtension.class)
@@ -21,7 +21,7 @@ public class OperatonWebappsEnvironmentPostProcessorTest {
   private final OperatonWebappsEnvironmentPostProcessor postProcessor = new OperatonWebappsEnvironmentPostProcessor();
 
   @Test
-  @DisplayName("Camunda's engine auto-configuration is switched off by default")
+  @DisplayName("Operaton's engine auto-configuration is switched off by default")
   public void switchedOffByDefault() {
 
     final var environment = new MockEnvironment();
@@ -30,7 +30,7 @@ public class OperatonWebappsEnvironmentPostProcessorTest {
 
     assertEquals(
         "false",
-        environment.getProperty(OperatonWebappsEnvironmentPostProcessor.CAMUNDA_BPM_ENABLED));
+        environment.getProperty(OperatonWebappsEnvironmentPostProcessor.OPERATON_BPM_ENABLED));
 
   }
 
@@ -39,7 +39,7 @@ public class OperatonWebappsEnvironmentPostProcessorTest {
   public void applicationMayDisableItItself() {
 
     final var environment = new MockEnvironment()
-        .withProperty(OperatonWebappsEnvironmentPostProcessor.CAMUNDA_BPM_ENABLED, "false");
+        .withProperty(OperatonWebappsEnvironmentPostProcessor.OPERATON_BPM_ENABLED, "false");
 
     postProcessor.postProcessEnvironment(environment, null);
 
@@ -57,13 +57,13 @@ public class OperatonWebappsEnvironmentPostProcessorTest {
   public void switchingItOnFails() {
 
     final var environment = new MockEnvironment()
-        .withProperty(OperatonWebappsEnvironmentPostProcessor.CAMUNDA_BPM_ENABLED, "true");
+        .withProperty(OperatonWebappsEnvironmentPostProcessor.OPERATON_BPM_ENABLED, "true");
 
     final var exception = assertThrows(
         IllegalStateException.class,
         () -> postProcessor.postProcessEnvironment(environment, null));
 
-    assertTrue(exception.getMessage().contains("camunda.bpm.enabled"), exception::getMessage);
+    assertTrue(exception.getMessage().contains("operaton.bpm.enabled"), exception::getMessage);
     assertTrue(exception.getMessage().contains("second engine"), exception::getMessage);
     assertTrue(
         exception.getMessage().contains("vanillabp.adapters.<id>"),

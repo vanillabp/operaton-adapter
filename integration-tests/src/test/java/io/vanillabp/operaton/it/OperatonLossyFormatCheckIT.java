@@ -68,7 +68,7 @@ public class OperatonLossyFormatCheckIT {
         output,
         "--spring.datasource.url=jdbc:h2:mem:c7-lossy-format-json;DB_CLOSE_DELAY=-1",
         "--vanillabp.adapters.c7.serialization-format=application/json",
-        "--vanillabp.adapters.c7.engine-plugins.spin.plugin-class=org.camunda.spin.plugin.impl.SpinProcessEnginePlugin");
+        "--vanillabp.adapters.c7.engine-plugins.spin.plugin-class=org.operaton.spin.plugin.impl.SpinProcessEnginePlugin");
 
     final var topLevel = warningAbout(log, "'total'");
     Assertions
@@ -112,7 +112,7 @@ public class OperatonLossyFormatCheckIT {
         output,
         "--spring.datasource.url=jdbc:h2:mem:c7-lossy-format-json-quiet;DB_CLOSE_DELAY=-1",
         "--vanillabp.adapters.c7.serialization-format=application/json",
-        "--vanillabp.adapters.c7.engine-plugins.spin.plugin-class=org.camunda.spin.plugin.impl.SpinProcessEnginePlugin");
+        "--vanillabp.adapters.c7.engine-plugins.spin.plugin-class=org.operaton.spin.plugin.impl.SpinProcessEnginePlugin");
 
     // a String is a string variable and never meets a serializer. So there is nothing to
     // measure and nothing to say.

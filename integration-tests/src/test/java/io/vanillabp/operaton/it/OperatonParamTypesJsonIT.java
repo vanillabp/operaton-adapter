@@ -15,7 +15,7 @@ import org.springframework.test.annotation.DirtiesContext;
  * the conversion accepts it either way.
  */
 @SpringBootTest(classes = TestApplication.class, properties = {
-    "spring.datasource.url=jdbc:h2:mem:c7-param-types-json-it;DB_CLOSE_DELAY=-1", "vanillabp.workflow-modules.c7-it.adapters.c7.resources-location=classpath*:c7-it/paramtypes", "vanillabp.adapters.c7.serialization-format=application/json", "vanillabp.adapters.c7.engine-plugins.spin.plugin-class=org.camunda.spin.plugin.impl.SpinProcessEnginePlugin"
+    "spring.datasource.url=jdbc:h2:mem:c7-param-types-json-it;DB_CLOSE_DELAY=-1", "vanillabp.workflow-modules.c7-it.adapters.c7.resources-location=classpath*:c7-it/paramtypes", "vanillabp.adapters.c7.serialization-format=application/json", "vanillabp.adapters.c7.engine-plugins.spin.plugin-class=org.operaton.spin.plugin.impl.SpinProcessEnginePlugin"
 })
 @DirtiesContext
 public class OperatonParamTypesJsonIT extends AbstractParamTypesIT {

@@ -34,8 +34,8 @@ import io.vanillabp.operaton.springboot.webapps.OperatonWebappsProperties.AdminU
  *
  * <p>
  * The engine name is part of the webapps' URLs
- * (<code>/camunda/app/cockpit/vanillabp-operaton-&lt;adapter-id&gt;/</code>).
- * <code>/camunda</code> redirects to it. With several adapter ids the webapps offer all
+ * (<code>/operaton/app/cockpit/vanillabp-operaton-&lt;adapter-id&gt;/</code>).
+ * <code>/operaton</code> redirects to it. With several adapter ids the webapps offer all
  * of them in their engine switcher.
  * </p>
  */
@@ -131,9 +131,9 @@ public class OperatonWebappsRegistration implements SmartLifecycle {
   }
 
   /**
-   * Creates the configured administrator, the group <code>camunda-admin</code> and the
+   * Creates the configured administrator, the group <code>operaton-admin</code> and the
    * grants that group needs. The webapps expect to find all three. Without a member of that
-   * group they open their setup wizard instead of the login. The recipe is Camunda's own,
+   * group they open their setup wizard instead of the login. The recipe is Operaton's own,
    * see their {@code CreateAdminUserConfiguration}.
    *
    * @param adapterId The adapter id whose engine is set up
@@ -225,7 +225,7 @@ public class OperatonWebappsRegistration implements SmartLifecycle {
     }
 
     final var group = identityService.newGroup(org.operaton.bpm.engine.authorization.Groups.OPERATON_ADMIN);
-    group.setName("camunda BPM Administrators");
+    group.setName("Operaton BPM Administrators");
     group.setType(Groups.GROUP_TYPE_SYSTEM);
     identityService.saveGroup(group);
 

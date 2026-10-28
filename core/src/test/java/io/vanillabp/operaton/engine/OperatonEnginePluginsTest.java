@@ -119,7 +119,7 @@ public class OperatonEnginePluginsTest {
     final var noPlugin = assertThrowsExactly(
         IllegalStateException.class,
         () -> OperatonEnginePlugins.of("c7", configured("java.lang.String", Map.of())));
-    assertTrue(noPlugin.getMessage().contains("is not a Camunda engine plugin"), noPlugin.getMessage());
+    assertTrue(noPlugin.getMessage().contains("is not an Operaton engine plugin"), noPlugin.getMessage());
 
     final var notCreatable = assertThrowsExactly(
         IllegalStateException.class,

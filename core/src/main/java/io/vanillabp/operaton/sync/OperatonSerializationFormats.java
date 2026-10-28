@@ -13,9 +13,7 @@ package io.vanillabp.operaton.sync;
  * </pre>
  *
  * The value is a Camunda serialization data format, e.g.
- * <code>application/json</code> for the SPIN JSON dataformat or
- * <code>application/xstream</code> for
- * <a href="https://github.com/RasPelikan/camunda-xstream">camunda-xstream</a>. The engine needs the
+ * <code>application/json</code> for the SPIN JSON dataformat. The engine needs the
  * matching dataformat on its classpath. That is a dependency of the application. The
  * adapter-level value is also applied to the engine's <code>defaultSerializationFormat</code>.
  * So an application configures the format once and nowhere else.

@@ -287,7 +287,7 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
                 vanillabp.adapters.%s.data-source-name: <bean name>
               Use the reserved value 'default' for the application's default (primary) datasource. \
               (Two adapter ids may also share one datasource if each uses its own \
-              'vanillabp.adapters.<id>.table-prefix' - Camunda does not create prefixed tables, so \
+              'vanillabp.adapters.<id>.table-prefix' - Operaton does not create prefixed tables, so \
               those have to exist beforehand.)"""
               .formatted(adapterId, String.join("', '", availableBeanNames), adapterId));
     }

@@ -61,7 +61,7 @@ public class OperatonWebappsWithoutAdminUserTest {
             + port)
         .build()
         .get()
-        .uri("/camunda")
+        .uri("/operaton")
         .retrieve()
         .toBodilessEntity();
 
@@ -71,7 +71,7 @@ public class OperatonWebappsWithoutAdminUserTest {
         entry
             .getHeaders()
             .getFirst(HttpHeaders.LOCATION)
-            .contains("/camunda/app/"));
+            .contains("/operaton/app/"));
 
   }
 
