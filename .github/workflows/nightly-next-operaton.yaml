@@ -1,0 +1,96 @@
+name: Nightly against the next Operaton
+# This adapter pins one Operaton minor in 'operaton.version' of the root POM. Operaton releases
+# a new minor every April and October and stops fixing the old one soon after. So the next
+# minor has to work here within about a month of its release, and a break should show up
+# while it is still a milestone or a release candidate.
+#
+# So this builds once a night against the newest Operaton version on Maven Central,
+# milestones and release candidates included. Where that is the pinned version itself, the
+# night is an ordinary build and costs nothing but time. A dispatch can name any version, for
+# instance to try a release candidate on a branch.
+#
+# A red night gets an issue, written by nightly-issue.yaml, like a red night against the
+# platform snapshot.
+"on":
+  schedule:
+    # half an hour after the night against the platform snapshot, so the two never compete
+    # for the runner cache and a queue does not start them together
+    - cron: "47 2 * * *"
+  workflow_dispatch:
+    inputs:
+      operaton-version:
+        description: The Operaton version to build against. Empty means the newest on Maven Central.
+        required: false
+        default: ""
+permissions:
+  contents: read
+concurrency:
+  group: nightly-next-operaton
+  cancel-in-progress: false
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          java-version: 25.0.5+8.0.LTS
+          distribution: temurin
+          cache: maven
+      # The newest version by number, not the one Maven Central calls 'latest': that is
+      # the one deployed last, and a patch of the old minor is often deployed after the
+      # first milestone of the next one. A '-' is turned into '~' for the sort, because
+      # 'sort -V' puts '~' in front of everything else, so 2.3.0-RC1 sorts before 2.3.0.
+      - name: Which Operaton version to build against
+        id: version
+        env:
+          REQUESTED: "${{ github.event.inputs.operaton-version }}"
+        run: |
+          set -euo pipefail
+          if [ -n "${REQUESTED:-}" ]; then
+            version=$REQUESTED
+          else
+            version=$(curl -fsSL \
+                https://repo1.maven.org/maven2/org/operaton/bpm/operaton-engine/maven-metadata.xml \
+              | sed -n 's|.*<version>\(.*\)</version>.*|\1|p' \
+              | sed 's/-/~/' | sort -V | tail -1 | sed 's/~/-/')
+          fi
+          pinned=$(sed -n 's|.*<operaton.version>\(.*\)</operaton.version>.*|\1|p' pom.xml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "### The Operaton version this run was built against"
+            echo
+            echo "- \`org.operaton.bpm\` $version (the root POM pins $pinned)"
+          } | tee -a "$GITHUB_STEP_SUMMARY" > "${RUNNER_TEMP}/operaton-version.md"
+      # The same command a pull request runs, with one property more. '--update-snapshots'
+      # keeps the VanillaBP snapshots as fresh as they are in a pull request, so a red night
+      # here and a green one against the platform snapshot point at Operaton.
+      - name: Build and test against that Operaton version
+        run: mvn -s .github/workflows/maven-settings.xml --batch-mode --no-transfer-progress
+          --update-snapshots install -Doperaton.version=${{ steps.version.outputs.version }}
+        env:
+          USER_NAME: "${{ secrets.VANILLABP_USER_NAME }}"
+          USER_TOKEN: "${{ secrets.VANILLABP_USER_TOKEN }}"
+          CI: false
+      # so the issue of a red night can name the version without reading the log
+      - name: Hand the version to the workflow which writes the issue
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: built-against
+          path: "${{ runner.temp }}/operaton-version.md"
+          retention-days: 30
+          if-no-files-found: ignore
+      - name: Upload the test reports of a failed build
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+            **/target/*application*.log
+          retention-days: 30
+          if-no-files-found: ignore
