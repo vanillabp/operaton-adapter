@@ -10,7 +10,7 @@ name: Nightly against the platform snapshot
 # 2026, and building all four repositories per merge is hours of CI a day. A night finds a
 # break within a day, which would have been soon enough for the case above.
 #
-# A red night does not stay in the list of runs. nightly-platform-snapshot-issue.yaml opens
+# A red night does not stay in the list of runs. nightly-issue.yaml opens
 # an issue for it, the way the Camunda 8 adapter reports a release line which broke.
 "on":
   schedule:

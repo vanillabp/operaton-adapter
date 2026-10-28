@@ -223,8 +223,10 @@ DECISIONS.md). There is one line of this adapter, and it follows the newest Oper
   a month of its release.
 - **Do not set `operaton.version` to another minor in your application.** The adapter uses engine
   classes under `.impl.`, and Operaton may change them in any minor without notice.
-- The database schema stays compatible between two minors in a row, so an application can follow the
-  adapter from one minor to the next without a schema step.
+- Operaton promises that the database schema stays compatible between two minors in a row. An
+  application follows the adapter from one minor to the next. The step from 2.1 to 2.2 changes no
+  table; it adds one row to the schema log, which the engine writes on its first start where
+  `database-schema-update` is `true`, the default.
 - A nightly build runs the whole suite against the newest Operaton version on Maven Central,
   milestones and release candidates included (`.github/workflows/nightly-next-operaton.yaml`). A red
   night opens an issue labelled `nightly-next-operaton`.
