@@ -171,7 +171,7 @@ public final class OperatonTablePrefixSchema {
         management off ('vanillabp.adapters.%s.database-schema-update: false'). The statements \
         come with the engine, under 'org/operaton/bpm/engine/db/create/' respectively as the \
         Liquibase changelog 'org/operaton/bpm/engine/db/liquibase/operaton-changelog.xml' in \
-        camunda-engine-<version>.jar, and the prefix has to be applied to them.
+        operaton-engine-<version>.jar, and the prefix has to be applied to them.
           - give this adapter id a database of its own \
         ('vanillabp.adapters.%s.data-source-name'), where the engine creates and upgrades its \
         schema itself and no prefix is needed."""
