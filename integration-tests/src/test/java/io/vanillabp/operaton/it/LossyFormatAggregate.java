@@ -1,0 +1,67 @@
+package io.vanillabp.operaton.it;
+
+import java.math.BigDecimal;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+
+/**
+ * The workflow aggregate of the round-trip check. It shares a decimal at both levels which
+ * a value can travel at. The model of this scenario reads both of them.
+ * <p>
+ * The values are never pushed anywhere. This scenario is about what the BOOT says, so
+ * nothing here has to run. {@code AbstractNestedExpressionsIT} measures what the engine
+ * makes of these values at runtime, against the same types.
+ */
+@Entity
+@Table(name = "C7_LOSSY_FORMAT_AGGREGATE")
+public class LossyFormatAggregate {
+
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
+  private BigDecimal total;
+
+  private String reference;
+
+  public Long getId() {
+
+    return id;
+
+  }
+
+  /**
+   * A decimal at the top level. It is an object variable of its own, and what an expression
+   * renders depends on the format it was written in.
+   */
+  public BigDecimal getTotal() {
+
+    return total;
+
+  }
+
+  /**
+   * The same decimal one level down, where a format loses the type rather than a digit.
+   */
+  @Transient
+  public LossyFormatOrder getOrder() {
+
+    return new LossyFormatOrder(total);
+
+  }
+
+  /**
+   * A value which the engine has a variable type for. The check has to stay quiet about it.
+   */
+  public String getReference() {
+
+    return reference;
+
+  }
+
+}

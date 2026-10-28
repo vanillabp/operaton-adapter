@@ -1,0 +1,579 @@
+package io.vanillabp.operaton.engine;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.PrintWriter;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.time.Duration;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Logger;
+
+import javax.sql.DataSource;
+
+import org.h2.jdbcx.JdbcDataSource;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.operaton.bpm.engine.ProcessEngine;
+import org.operaton.bpm.engine.delegate.ExecutionListener;
+import org.operaton.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
+import org.operaton.bpm.engine.impl.cfg.StandaloneProcessEngineConfiguration;
+import org.operaton.bpm.engine.impl.jobexecutor.JobExecutor;
+import org.operaton.bpm.engine.impl.jobexecutor.SequentialJobAcquisitionRunnable;
+import org.operaton.bpm.engine.variable.Variables;
+import org.operaton.bpm.model.bpmn.Bpmn;
+import org.operaton.bpm.model.bpmn.BpmnModelInstance;
+
+import io.vanillabp.integration.test.utils.SuppressOutputExtension;
+
+/**
+ * What an idle engine costs its database, measured. Every connection the engine takes is
+ * counted. So the claim this feature lives by is a number, not a description of a sleep:
+ * while nothing is due, the count does not move.
+ * <p>
+ * The engine here is a plain standalone one on H2, built twice per comparison. Once it has
+ * the acquisition which sleeps until something is due. Once it is exactly as the engine
+ * ships. The wait times are turned down to 100 ms, so the difference between sleeping and
+ * polling shows in seconds, not in minutes. The adapter leaves them at the engine's
+ * defaults.
+ * <p>
+ * The platform halves prove the wiring instead, each on its own datasource counter
+ * ({@code OperatonSleepingEngineIT} on Spring Boot and {@code OperatonSleepingEngineTest} on
+ * Quarkus). A correct strategy says nothing about whether a platform ever installs it.
+ * <p>
+ * The start of a measurement is read from the engine, not from the clock. It is a cycle
+ * which found nothing to do, with the acquisition thread parked afterwards. Before both of
+ * those, the engine is backing off after work, not sleeping. A measurement which starts
+ * there measures the backoff. Waiting for a fixed number of polling intervals did that, and
+ * a busy build machine then turned the test red.
+ * <p>
+ * The end of a measurement is read from the engine as well, for a similar reason. A
+ * listener on the workflow says that the job ran. Asking the engine in a loop would answer
+ * the question but spoil the answer. Every committed engine command wakes the acquisition,
+ * and each of those wake-ups is a cycle in the count being taken. Twenty questions a second
+ * turned eleven connections into sixty-four.
+ */
+@ExtendWith(SuppressOutputExtension.class)
+@SuppressOutputExtension.SuppressBackgroundOutput
+public class OperatonDueDateSleepTest {
+
+  /**
+   * How long the engine waits between two cycles while it polls. It is small enough to tell
+   * a polling engine and a sleeping one apart within a second or two.
+   */
+  private static final int POLLING_INTERVAL = 100;
+
+  /**
+   * The window the measurements watch. It is long enough for a polling engine to come back
+   * several times, and short enough to keep this test class quick.
+   */
+  private static final long QUIET_WINDOW = 2000;
+
+  /**
+   * How long the timer of the due date test runs. It is further out than the wait time of
+   * the executor. So the hint the engine gives its own executor does not cover it, and the
+   * due date has to.
+   */
+  private static final Duration TIMER = Duration.ofSeconds(2);
+
+  /**
+   * How long a test waits for something which should have happened, before it says that it
+   * never will. It is three times the longest thing any test here waits for, which is the
+   * timer. And it is never less than twenty seconds. A machine which runs other builds leaves
+   * this JVM without a turn for seconds at a time, and such a pause does not get smaller when
+   * the timer does. Nothing is measured against this number, so it is used up only when a
+   * test fails. A test which is right stops waiting the moment the thing has happened.
+   */
+  private static final long PATIENCE = Math.max(20000, TIMER.multipliedBy(3).toMillis());
+
+  /**
+   * How many cycles the due date test allows the acquisition: the one woken by the commit
+   * which wrote the timer, the one woken by the question this test asks while the timer
+   * runs, the one at the due date, and one more for the job it found there.
+   */
+  private static final int CYCLES_A_DUE_DATE_COSTS = 4;
+
+  /**
+   * What one of those cycles may cost: the query for due jobs, the job it locks, the job it
+   * runs, and a spare for a step this test does not know about.
+   */
+  private static final int CONNECTIONS_PER_CYCLE = 4;
+
+  /**
+   * When the acquisition counts as polling and not as waiting for the due date. A polling
+   * engine comes back every {@link #POLLING_INTERVAL} instead. Over this timer that is
+   * twenty cycles, where four are allowed here.
+   */
+  private static final int TOO_MANY_CONNECTIONS = CYCLES_A_DUE_DATE_COSTS * CONNECTIONS_PER_CYCLE;
+
+  private static final String SLEEPER = "ASleeper";
+
+  private static final String WORKER = "AWorker";
+
+  private ProcessEngine processEngine;
+
+  private JobExecutor jobExecutor;
+
+  private CountingConnections connections;
+
+  /**
+   * Counted down when the workflow which waits in a timer has reached its end. The engine
+   * itself says so, from a listener on the end event. That listener is the last thing the
+   * timer job does before it commits.
+   */
+  private final CountDownLatch theTimerHasFired = new CountDownLatch(1);
+
+  @AfterEach
+  public void closeTheEngine() {
+
+    if (jobExecutor != null) {
+      jobExecutor.shutdown();
+    }
+    if (processEngine != null) {
+      processEngine.close();
+    }
+
+  }
+
+  /**
+   * An H2 datasource which counts every connection the engine takes. An engine command needs
+   * a connection before it can say a word to the database. So a count which does not move
+   * means that nobody spoke to the database.
+   */
+  private static final class CountingConnections implements DataSource {
+
+    private final JdbcDataSource h2 = new JdbcDataSource();
+
+    private final AtomicInteger taken = new AtomicInteger();
+
+    void setURL(
+        final String url) {
+
+      h2.setURL(url);
+
+    }
+
+    int count() {
+
+      return taken.get();
+
+    }
+
+    @Override
+    public Connection getConnection() throws SQLException {
+
+      taken.incrementAndGet();
+      return h2.getConnection();
+
+    }
+
+    @Override
+    public Connection getConnection(
+        final String username,
+        final String password) throws SQLException {
+
+      taken.incrementAndGet();
+      return h2.getConnection(username, password);
+
+    }
+
+    @Override
+    public PrintWriter getLogWriter() throws SQLException {
+
+      return h2.getLogWriter();
+
+    }
+
+    @Override
+    public void setLogWriter(
+        final PrintWriter out) throws SQLException {
+
+      h2.setLogWriter(out);
+
+    }
+
+    @Override
+    public void setLoginTimeout(
+        final int seconds) throws SQLException {
+
+      h2.setLoginTimeout(seconds);
+
+    }
+
+    @Override
+    public int getLoginTimeout() throws SQLException {
+
+      return h2.getLoginTimeout();
+
+    }
+
+    @Override
+    public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+
+      return h2.getParentLogger();
+
+    }
+
+    @Override
+    public <T> T unwrap(
+        final Class<T> iface) throws SQLException {
+
+      return h2.unwrap(iface);
+
+    }
+
+    @Override
+    public boolean isWrapperFor(
+        final Class<?> iface) throws SQLException {
+
+      return h2.isWrapperFor(iface);
+
+    }
+
+  }
+
+  /**
+   * A workflow which waits in a timer for as long as the variable <code>duration</code>
+   * says, plus one which has a job to do right away.
+   */
+  private static BpmnModelInstance aWorkflowWaitingInATimer() {
+
+    return Bpmn
+        .createExecutableProcess(SLEEPER)
+        .startEvent()
+        .intermediateCatchEvent()
+        .timerWithDuration("${duration}")
+        .endEvent()
+        .operatonExecutionListenerDelegateExpression("end", "${theTimerHasFired}")
+        .done();
+
+  }
+
+  private static BpmnModelInstance aWorkflowWithSomethingToDoNow() {
+
+    return Bpmn
+        .createExecutableProcess(WORKER)
+        .startEvent()
+        .serviceTask()
+        .operatonAsyncBefore()
+        .operatonExpression("${true}")
+        .endEvent()
+        .done();
+
+  }
+
+  /**
+   * Builds an engine on a counted H2 database and deploys both models.
+   *
+   * @param name The database and engine name, one per test
+   * @param sleeps Whether the acquisition sleeps until something is due
+   */
+  private void anEngine(
+      final String name,
+      final boolean sleeps) {
+
+    connections = new CountingConnections();
+    connections.setURL("jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1".formatted(name));
+
+    final var properties = new OperatonEngineProperties();
+    properties.setSleepUntilSomethingIsDue(sleeps);
+
+    final var configuration = new StandaloneProcessEngineConfiguration();
+    configuration.setProcessEngineName(name);
+    configuration
+        .setBeans(
+            Map
+                .of(
+                    "theTimerHasFired",
+                    (ExecutionListener) execution -> theTimerHasFired.countDown()));
+    configuration.setDataSource(connections);
+    configuration.setDatabaseSchemaUpdate("create-drop");
+    configuration.setHistoryTimeToLive("P180D");
+    configuration.setJobExecutorActivate(false);
+    if (sleeps) {
+      configuration.setJobExecutor(new OperatonSleepingJobExecutor(name));
+    }
+    OperatonJobExecutorSleep.applyTo(name, configuration, properties);
+
+    processEngine = configuration.buildProcessEngine();
+    jobExecutor = ((ProcessEngineConfigurationImpl) processEngine.getProcessEngineConfiguration())
+        .getJobExecutor();
+    jobExecutor.setWaitTimeInMillis(POLLING_INTERVAL);
+    jobExecutor.setMaxWait(POLLING_INTERVAL);
+
+    processEngine
+        .getRepositoryService()
+        .createDeployment()
+        .addModelInstance("sleeper.bpmn", aWorkflowWaitingInATimer())
+        .addModelInstance("worker.bpmn", aWorkflowWithSomethingToDoNow())
+        .deploy();
+
+  }
+
+  private void startTheTimerOf(
+      final Duration duration) {
+
+    processEngine
+        .getRuntimeService()
+        .startProcessInstanceByKey(SLEEPER, Variables.putValue("duration", duration.toString()));
+
+  }
+
+  private long runningWorkflows() {
+
+    return processEngine
+        .getRuntimeService()
+        .createProcessInstanceQuery()
+        .count();
+
+  }
+
+  /**
+   * Waits until no workflow is running any more, and says how long that took.
+   */
+  private long waitForEveryWorkflowToEnd() throws InterruptedException {
+
+    final var started = System.currentTimeMillis();
+    final var deadline = started + PATIENCE;
+    while (runningWorkflows() > 0) {
+      assertTrue(
+          System.currentTimeMillis() < deadline,
+          "a workflow was still running after %d ms".formatted(Long.valueOf(PATIENCE)));
+      Thread.sleep(50);
+    }
+    return System.currentTimeMillis() - started;
+
+  }
+
+  /**
+   * When the acquisition last started a cycle. The loop writes it into the context it keeps.
+   * So a cycle which ran while nobody was looking is still visible afterwards.
+   */
+  private long lastCycleAt() {
+
+    return ((SequentialJobAcquisitionRunnable) jobExecutor.getAcquireJobsRunnable())
+        .getAcquisitionContext()
+        .getAcquisitionTime();
+
+  }
+
+  /**
+   * Starts the executor and waits until the acquisition is asleep. Two things must be true at
+   * once: its last cycle found nothing to do, and its thread is parked.
+   * <p>
+   * Only for a cycle which found nothing does the due date decide the wait. A cycle which
+   * found work backs off instead. And the cycle which found nothing still runs for a moment
+   * after it says so. So the parked thread is what says that the cycle is over and its
+   * connection is given back. A measurement which started before both were true measured the
+   * backoff and called it a sleep. Waiting for a fixed number of polling intervals did
+   * exactly that. It made these measurements red on a machine busy with something else.
+   * <p>
+   * Nothing else is waited for. A wake-up is not waited for, on purpose. The test's own
+   * questions to the engine are engine commands, and a committed engine command asks the
+   * acquisition to wake up. So an earlier version of this test sent such a wake-up itself and
+   * waited for the cycle it should cause. That timed out in four runs out of five on a loaded
+   * machine (Camunda 7.24.0, 2026-09-14). A wake-up which arrived while the next wait was
+   * being decided was dropped. That window is closed ({@code OperatonWakeupInTheGapTest}).
+   * Still, waiting for the parked thread is the cheaper question. It is about this loop, not
+   * about who woke it.
+   * <p>
+   * The engine which does not sleep has no thread to ask. There the cycle is all there is,
+   * and that is enough. That measurement only asserts that the engine keeps coming back.
+   *
+   * @return When the cycle which found nothing started
+   */
+  private long waitUntilTheEngineIsAsleep() throws InterruptedException {
+
+    jobExecutor.start();
+    final var deadline = System.currentTimeMillis() + PATIENCE;
+    for (;;) {
+      final var context = ((SequentialJobAcquisitionRunnable) jobExecutor.getAcquireJobsRunnable())
+          .getAcquisitionContext();
+      final var foundNothing = context
+          .areAllEnginesIdle() && !context.hasJobAcquisitionLockFailureOccurred() && (context
+              .getAcquisitionException() == null) && (context.getAcquisitionTime() > 0);
+      if (foundNothing && theAcquisitionThreadIsParked()) {
+        return context.getAcquisitionTime();
+      }
+      assertTrue(
+          System.currentTimeMillis() < deadline,
+          "the acquisition never ran a cycle which found nothing to do");
+      Thread.sleep(20);
+    }
+
+  }
+
+  /**
+   * Whether the thread running the acquisition cycles is waiting and not working. The
+   * adapter answers which thread that is. {@code OperatonWakeupAfterCommit} asks it about
+   * every committing thread. So the threads of this JVM are compared with that answer, not
+   * with a name somebody guessed.
+   *
+   * @return Whether it is parked, and <code>true</code> for an executor which does not
+   *         sleep, because there is no sleep to wait for
+   */
+  private boolean theAcquisitionThreadIsParked() {
+
+    if (!(jobExecutor.getAcquireJobsRunnable() instanceof OperatonSleepingAcquisition acquisition)) {
+      return true;
+    }
+    return Thread
+        .getAllStackTraces()
+        .keySet()
+        .stream()
+        .filter(acquisition::runsTheAcquisition)
+        .anyMatch(
+            thread -> (thread.getState() == Thread.State.WAITING) || (thread.getState() == Thread.State.TIMED_WAITING));
+
+  }
+
+  /**
+   * Lets the acquisition fall asleep, then reports how many connections it takes while
+   * nothing is due.
+   */
+  private int connectionsTakenWhileNothingIsDue() throws InterruptedException {
+
+    waitUntilTheEngineIsAsleep();
+    final var before = connections.count();
+    Thread.sleep(QUIET_WINDOW);
+    return connections.count() - before;
+
+  }
+
+  @Test
+  @DisplayName("an engine with nothing due does not talk to its database at all")
+  public void nothingIsAskedOfTheDatabaseWhileNothingIsDue() throws Exception {
+
+    anEngine("c7-sleep-quiet", true);
+
+    final var fellAsleepAt = waitUntilTheEngineIsAsleep();
+    final var before = connections.count();
+    Thread.sleep(QUIET_WINDOW);
+
+    assertEquals(
+        fellAsleepAt,
+        lastCycleAt(),
+        "the acquisition ran another cycle while nothing was due, so it did not sleep");
+    assertEquals(
+        0,
+        connections.count() - before,
+        "a sleeping acquisition must not take a single connection while nothing is due");
+
+  }
+
+  @Test
+  @DisplayName("an engine which does not sleep keeps asking, which is today's behaviour")
+  public void anEngineWhichDoesNotSleepKeepsAsking() throws Exception {
+
+    anEngine("c7-sleep-off", false);
+
+    assertTrue(
+        connectionsTakenWhileNothingIsDue() > 1,
+        "without the property the engine polls, which is what this feature is measured against");
+
+  }
+
+  @Test
+  @DisplayName("a job due later runs at its due date, and nothing is asked until then")
+  public void aJobDueLaterRunsAtItsDueDate() throws Exception {
+
+    anEngine("c7-sleep-duedate", true);
+    waitUntilTheEngineIsAsleep();
+
+    // the engine hints its own executor only for a job due inside the executor's wait
+    // time. So this feature has to cover a timer further out by itself
+    final var before = connections.count();
+    final var dueAt = System.currentTimeMillis() + TIMER.toMillis();
+    startTheTimerOf(TIMER);
+
+    // halfway through the timer the workflow still has to be waiting. Asking costs a
+    // connection and wakes the acquisition. So the test asks once and not in a loop. And
+    // it does not ask at all on a machine which needed the whole timer to get here
+    Thread.sleep(TIMER.toMillis() / 2);
+    if (System.currentTimeMillis() < dueAt) {
+      assertEquals(
+          1,
+          runningWorkflows(),
+          "the timer is not due yet, so the workflow has to be waiting");
+    }
+
+    // and here the test waits for the thing it is about: the job ran. The engine says so
+    // itself. So the wait ends the moment it happens, and asks the database nothing while
+    // it lasts. Waiting a fixed span instead paid for the slowest machine on every run.
+    // And it still left the job no more room than that span happened to hold
+    final var itRan = theTimerHasFired.await(PATIENCE, TimeUnit.MILLISECONDS);
+    final var spent = connections.count() - before;
+
+    assertTrue(
+        itRan,
+        "the timer was due %d ms ago and its job has not run"
+            .formatted(Long.valueOf(System.currentTimeMillis() - dueAt)));
+    assertTrue(
+        spent < TOO_MANY_CONNECTIONS,
+        "the acquisition took %d connections where it should have waited for the due date"
+            .formatted(Integer.valueOf(spent)));
+
+    // the listener runs inside the transaction of the job. So this is what says that the
+    // transaction was committed as well
+    waitForEveryWorkflowToEnd();
+
+  }
+
+  @Test
+  @DisplayName("a commit shortens a sleep which was already running")
+  public void aCommitShortensTheSleep() throws Exception {
+
+    anEngine("c7-sleep-shortened", true);
+    jobExecutor.start();
+
+    // the acquisition is now asleep for half a minute
+    startTheTimerOf(Duration.ofSeconds(30));
+    waitUntilTheEngineIsAsleep();
+
+    // and this commit has to pull the wake-up forward to the nearer due date
+    startTheTimerOf(Duration.ofSeconds(1));
+    final var deadline = System.currentTimeMillis() + PATIENCE;
+    while (runningWorkflows() > 1) {
+      assertTrue(
+          System.currentTimeMillis() < deadline,
+          "the nearer timer did not shorten the sleep of the longer one");
+      Thread.sleep(50);
+    }
+
+    assertEquals(
+        1,
+        runningWorkflows(),
+        "the workflow whose timer is due in half a minute has to be still waiting");
+
+  }
+
+  @Test
+  @DisplayName("an engine with no job at all waits until something happens")
+  public void anEngineWithoutAnyJobWaitsUntilSomethingHappens() throws Exception {
+
+    anEngine("c7-sleep-nojob", true);
+
+    assertEquals(
+        0,
+        connectionsTakenWhileNothingIsDue(),
+        "an engine holding no job at all has nothing to wake up for");
+
+    processEngine
+        .getRuntimeService()
+        .startProcessInstanceByKey(WORKER);
+    final var waited = waitForEveryWorkflowToEnd();
+
+    assertTrue(
+        waited < PATIENCE,
+        "the waiting acquisition has to be woken by the transaction which wrote the job");
+
+  }
+
+}

@@ -1,0 +1,2264 @@
+package io.vanillabp.operaton.processservice;
+
+import java.util.Map;
+
+import org.operaton.bpm.engine.RuntimeService;
+import org.operaton.bpm.engine.runtime.ProcessInstance;
+
+import io.vanillabp.integration.adapter.spi.MigratableProcessService;
+import io.vanillabp.integration.adapter.spi.PhaseOneRequest;
+import io.vanillabp.integration.adapter.spi.PhaseOperationHandler;
+import io.vanillabp.integration.adapter.spi.PhaseTwoRequest;
+import io.vanillabp.integration.adapter.spi.WorkflowAwareness;
+import io.vanillabp.integration.spi.AggregatePersistenceAware;
+import io.vanillabp.integration.spi.PhaseOperation;
+import io.vanillabp.operaton.sync.OperatonSerializationFormats;
+import io.vanillabp.operaton.sync.OperatonValueTypes;
+import io.vanillabp.operaton.sync.OperatonVariables;
+import io.vanillabp.operaton.wiring.OperatonConfiguredTenant;
+import io.vanillabp.operaton.wiring.OperatonScoping;
+import io.vanillabp.operaton.wiring.OperatonTaskRegistry;
+import io.vanillabp.operaton.wiring.OperatonWorkflowTaskBehavior;
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * Operaton implementation of the VanillaBP {@link MigratableProcessService}. One
+ * instance exists per configured adapter id.
+ * <p>
+ * Operaton runs embedded in the application's JVM. Usually it shares the application's
+ * database and transaction. Still, VanillaBP moves the process on AFTER the commit, the
+ * way every other BPMS does. Every operation which moves a process on is scheduled
+ * through the phase-two outbox. The adapter SPI asks this of every adapter.
+ * <p>
+ * <b>Why, although sharing the transaction was comfortable:</b> an engine command which
+ * loses a concurrency conflict cannot be repeated inside the caller's transaction. Every
+ * command joins that transaction, so a failing one marks it rollback-only. We could
+ * repeat just the engine part in a transaction of its own. But then the process would
+ * move on while the application rolls back. That is the ghost progress the two-phase
+ * pattern exists to prevent. Think of an application which answers an open task while a
+ * timer job of the same workflow runs. It got an {@code OptimisticLockingException} and
+ * could do nothing about it. Through the outbox the operation is simply repeated.
+ * <p>
+ * <b>What that costs:</b> the operation happens after the commit. So "the engine has done
+ * it when my method returns" no longer holds. Phase one still ASKS. An embedded engine
+ * can answer for free and in the same transaction. So the core's election probe still
+ * reports a task which does not exist, or a workflow the engine does not know, at once,
+ * before anything is scheduled.
+ * <p>
+ * Phase two is dispatched at-least-once (outbox retries, crash recovery). So every
+ * operation is idempotent. Starting skips an existing instance with the same business key
+ * and tenant. Completing or cancelling a task checks that the task is still there.
+ * Correlating checks the subscription.
+ * <p>
+ * The workflow-aggregate ID maps onto the Operaton <b>business key</b>. A Camunda <b>tenant
+ * ID</b> is used only under the name-clash-avoidance mode {@code by-adapter}. It is the workflow
+ * module ID, unless <code>tenant-id</code> gives the module another name - see
+ * {@link #startProcessInstance(String, String, Object)}.
+ * <p>
+ * Decision 8 in the Camunda 7 adapter's DECISIONS.md says why every probe, and the instance lookup
+ * behind aggregateChanged, filter by the scope of the call and not by the business key
+ * alone. Decision 2 says why phase one only asks while phase two acts.
+ *
+ * @param <A> The workflow aggregate type of the workflows this service serves
+ */
+@Slf4j
+// see decision 4 in the Camunda 7 adapter's DECISIONS.md
+@SuppressWarnings("LombokSetterMayBeUsed")
+public class OperatonProcessService<A> implements MigratableProcessService<A> {
+
+  /**
+   * The tail of the name of the exception at the root of every expression failure. The
+   * exceptions for an unknown method and for an unknown property extend it. So a walk up
+   * through the ancestors of a class finds them all.
+   */
+  private static final String EXPRESSION_FAILURE = ".el.ELException";
+
+  private final String adapterId;
+
+  /**
+   * The embedded engine's runtime service used to start process instances. Provided by
+   * the platform module (Spring Boot or Quarkus) which wires the embedded engine. The engine
+   * runs on the application's datasource, or on one of its own where the adapter id names
+   * one.
+   */
+  private final RuntimeService runtimeService;
+
+  /**
+   * The embedded engine's task service, for user-task operations.
+   */
+  private final org.operaton.bpm.engine.TaskService taskService;
+
+  /**
+   * The viewer and history API: definitions, BPMN XML and the instance timeline. The
+   * engine's repository and history services answer it.
+   */
+  private final OperatonWorkflowViewer viewer;
+
+  /**
+   * The embedded engine's history service. It answers the awareness of ENDED workflows
+   * and the viewer and history API.
+   */
+  private final org.operaton.bpm.engine.HistoryService historyService;
+
+  /**
+   * The engine's repository service. The deployed BPMN model tells whether an activity
+   * creates a scope of its own (boundary events, multi-instance) or not. That decides
+   * where a task-scoped push has to write.
+   */
+  private final org.operaton.bpm.engine.RepositoryService repositoryService;
+
+  /**
+   * The core's sync model. Operaton shares values like every other BPMS. The values are
+   * written as process variables at every point where this adapter talks to the engine.
+   * The engine's expressions read those variables. Being embedded is no reason to do it
+   * differently. The engine evaluates its models against its own variables either way.
+   * And a model which read something else would work here and break on every remote BPMS.
+   * <p>
+   * VanillaBP never reads these variables back, because the aggregate is the truth. The
+   * only variables read are the ones a {@code @TaskParam} asks for. The BPMN model
+   * provides those on purpose.
+   */
+  private final io.vanillabp.integration.adapter.spi.WorkflowAggregateSync aggregateSync;
+
+  /**
+   * Everything the platform hands over. An adapter which is registered incompletely is
+   * never built (see
+   * {@link io.vanillabp.integration.adapter.spi.AdapterCollaborators}).
+   */
+  private final io.vanillabp.integration.adapter.spi.AdapterCollaborators collaborators;
+
+  /**
+   * The technical variable written when the application shares nothing. Operaton
+   * evaluates conditional events on variable changes. So SOMETHING has to change, or the
+   * engine does not look. Its value is the time of the push. It is only there to make
+   * every write a change.
+   */
+  public static final String AGGREGATE_CHANGED_MARKER = "vanillabpAggregateChanged";
+
+  /**
+   * The default of this adapter: everything is shared unless the application excludes
+   * it ({@code @NoSyncWithBPMS}). This is the default of every VanillaBP adapter, because
+   * a model must not depend on which BPMS runs it.
+   */
+  public static final io.vanillabp.integration.adapter.spi.AggregateSyncMode SYNC_MODE = io.vanillabp.integration.adapter.spi.AggregateSyncMode.FULL;
+
+  /**
+   * The core's name-clash-avoidance model. It translates process ids, message names and
+   * error codes into what the ENGINE knows. And it decides whether operations run in a
+   * Camunda tenant. May be <code>null</code> (tests). Then the workflow module id is the
+   * tenant, as before.
+   */
+  private final io.vanillabp.integration.adapter.spi.NameClashAvoidanceSupport scoping;
+
+  /**
+   * Which serialization format nested shared values are stored in. It is resolved per
+   * workflow, with a fallback to the workflow module and the adapter. The platform
+   * integration provides it, because it binds the configuration. It is <code>null</code>
+   * in tests, and then the engine's default applies.
+   */
+  private OperatonSerializationFormats serializationFormats;
+
+  /**
+   * Hands over how a nested shared value is serialized. It arrives after construction.
+   * The platform integration binds the configuration, and the service is built before
+   * that is available.
+   *
+   * @param serializationFormats The format resolution of the platform integration
+   */
+  public void setSerializationFormats(
+      final OperatonSerializationFormats serializationFormats) {
+
+    this.serializationFormats = serializationFormats;
+
+  }
+
+  /**
+   * The configured format for nested shared values of one workflow, or
+   * <code>null</code>.
+   */
+  private String serializationFormatOf(
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    return serializationFormats != null
+        ? serializationFormats.formatFor(workflowModuleId, bpmnProcessId)
+        : null;
+
+  }
+
+  /**
+   * What a workflow module's tenant is CONFIGURED as. The platform modules resolve it over
+   * the levels the name may be set at. It is <code>null</code> for a module which has no
+   * configured tenant. Then the workflow module id names it.
+   */
+  private java.util.function.Function<String, OperatonConfiguredTenant> configuredTenants;
+
+  /**
+   * Narrows a runtime query down to the scope an awareness probe was asked about.
+   * <p>
+   * <b>Why the probes need it.</b> An Operaton business key is the workflow-aggregate id.
+   * It is unique per aggregate type, but not across an engine. So the key alone answers for
+   * any workflow of any workflow module which happens to count from the same number. It
+   * even answers for processes this application never wired, because somebody else may
+   * share the engine's database. What tells them apart is what the scope names: the
+   * workflow module and its BPMN processes. They are translated into the process definition
+   * keys the engine knows, and the tenant the module runs in.
+   *
+   * @param query The query to narrow
+   * @param scope What the probe was asked about
+   * @return The same query, narrowed
+   */
+  private org.operaton.bpm.engine.runtime.ProcessInstanceQuery within(
+      final org.operaton.bpm.engine.runtime.ProcessInstanceQuery query,
+      final io.vanillabp.integration.adapter.spi.WorkflowScope scope) {
+
+    final var scoped = query.processDefinitionKeyIn(scopedProcessIdsOf(scope));
+    final var tenantId = tenantIdOf(scope.workflowModuleId());
+    return tenantId != null
+        ? scoped.tenantIdIn(tenantId)
+        : scoped.withoutTenantId();
+
+  }
+
+  /**
+   * Narrows a history query down to the same scope.
+   */
+  private org.operaton.bpm.engine.history.HistoricProcessInstanceQuery withinHistory(
+      final org.operaton.bpm.engine.history.HistoricProcessInstanceQuery query,
+      final io.vanillabp.integration.adapter.spi.WorkflowScope scope) {
+
+    final var scoped = query.processDefinitionKeyIn(scopedProcessIdsOf(scope));
+    final var tenantId = tenantIdOf(scope.workflowModuleId());
+    return tenantId != null
+        ? scoped.tenantIdIn(tenantId)
+        : scoped.withoutTenantId();
+
+  }
+
+  /**
+   * @param scope What the probe was asked about
+   * @return The process definition keys the engine knows that scope's processes by
+   */
+  private String[] scopedProcessIdsOf(
+      final io.vanillabp.integration.adapter.spi.WorkflowScope scope) {
+
+    return scope
+        .bpmnProcessIds()
+        .stream()
+        .map(bpmnProcessId -> scopedProcessId(scope.workflowModuleId(), bpmnProcessId))
+        .toArray(String[]::new);
+
+  }
+
+  /**
+   * Whether this adapter id was given a datasource of its own
+   * (<code>vanillabp.adapters.&lt;id&gt;.data-source-name</code>). The platform
+   * integration sets it, because it builds the engine. In tests it is <code>false</code>,
+   * the answer for a shared datasource.
+   */
+  private boolean engineRunsOnItsOwnDataSource;
+
+  /**
+   * Tells the service whether the engine shares the application's datasource. It changes
+   * what an operation may assume about the caller's transaction. So whoever built the
+   * engine sets it, and nobody else.
+   *
+   * @param engineRunsOnItsOwnDataSource Whether the engine runs on a datasource of its
+   *          own
+   */
+  public void setEngineRunsOnItsOwnDataSource(
+      final boolean engineRunsOnItsOwnDataSource) {
+
+    this.engineRunsOnItsOwnDataSource = engineRunsOnItsOwnDataSource;
+
+  }
+
+  /**
+   * What the adapter knows about its deployed process definitions. The task deliveries of
+   * the same engine share it. It is <code>null</code> in tests which build the service
+   * without an engine holder. Then a start reports no version, and a start by message asks
+   * the engine for the newest definition.
+   */
+  private OperatonTaskRegistry taskRegistry;
+
+  /**
+   * Hands over the registry from which the deliveries of this engine read the version of a
+   * process definition. A start reports its version through the same cache. So a start and
+   * a task of the same workflow name the version in the same form.
+   *
+   * @param taskRegistry The task registry of the engine this service runs on
+   */
+  public void setTaskRegistry(
+      final OperatonTaskRegistry taskRegistry) {
+
+    this.taskRegistry = taskRegistry;
+
+  }
+
+  /**
+   * The version of the process definition a new instance runs on, in the form a task of the
+   * same workflow reports it.
+   */
+  private String versionOfTheDefinitionOf(
+      final ProcessInstance started) {
+
+    return taskRegistry == null
+        ? null
+        : taskRegistry.versionOfDefinition(started.getProcessDefinitionId());
+
+  }
+
+  /**
+   * Sets the tenant names the application configured. This is this adapter's own
+   * configuration. The name-clash-avoidance support is not; it arrives with the
+   * collaborators.
+   *
+   * @param configuredTenants What a workflow module's tenant is configured as
+   */
+  public void setConfiguredTenants(
+      final java.util.function.Function<String, OperatonConfiguredTenant> configuredTenants) {
+
+    this.configuredTenants = configuredTenants;
+
+  }
+
+  /**
+   * Correlates a message which STARTS a workflow. It starts only a workflow of the process
+   * the caller's process service belongs to. It answers the instance the message created.
+   * <p>
+   * The correlation names the process definition. Without it the engine would start every
+   * process whose start event waits for that message. Version 1 did that. The core refuses
+   * such a message before phase one, wherever this adapter could report the messages of
+   * the model. Naming the definition keeps the rule where the core could not check.
+   * <p>
+   * The definition is the newest version of the process, the same one {@code startWorkflow}
+   * starts. A version somebody deployed from outside after the application started is the
+   * newest one, too. See {@code OperatonStartByMessageIT}.
+   * <p>
+   * Operaton refuses a correlation which names a process definition and a tenant at the
+   * same time. The definition was looked up within the module's tenant, so it carries the
+   * tenant already.
+   */
+  private ProcessInstance startByMessage(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final String messageName,
+      final String businessKey,
+      final java.util.Map<String, Object> sharedValues) {
+
+    return runtimeService
+        .createMessageCorrelation(scopedIdentifier(workflowModuleId, messageName))
+        .processDefinitionId(definitionStartedByMessages(workflowModuleId, bpmnProcessId))
+        .processInstanceBusinessKey(businessKey)
+        // the new instance starts with the values its model may read, exactly
+        // like a workflow which is started without a message
+        .setVariables(sharedValues)
+        .correlateStartMessage();
+
+  }
+
+  /**
+   * The process definition of which a message start creates an instance. It is the newest
+   * version of the process in the module's tenant. Usually this is the version the
+   * application deployed while it started. A version deployed later from outside replaces
+   * it, exactly as it does for a start without a message.
+   *
+   * @param workflowModuleId The workflow module ID
+   * @param bpmnProcessId The PLAIN BPMN process ID
+   * @return The engine's process definition id
+   * @throws IllegalStateException If the engine holds no definition of that process
+   */
+  private String definitionStartedByMessages(
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    final var tenantId = tenantIdOf(workflowModuleId);
+    var query = repositoryService
+        .createProcessDefinitionQuery()
+        .processDefinitionKey(scopedProcessId(workflowModuleId, bpmnProcessId))
+        .latestVersion();
+    query = tenantId != null
+        ? query.tenantIdIn(tenantId)
+        : query.withoutTenantId();
+    final var newest = query.singleResult();
+    if (newest == null) {
+      throw new IllegalStateException(
+          """
+              BPMN process '%s' of workflow module '%s' is not deployed to adapter '%s', so no \
+              message can start it! Check that the model of this process is part of the \
+              workflow module's resources."""
+              .formatted(bpmnProcessId, workflowModuleId, adapterId));
+    }
+    return newest.getId();
+
+  }
+
+  /**
+   * Whether the model of a process definition has a start event for this message. It reads
+   * the model the way the engine does when a correlation names that definition: the start
+   * events the process itself holds, and the message name as the model writes it. Operaton
+   * refuses to deploy a message start event whose name is an expression. So the name in the
+   * model is always the plain name. See {@code OperatonMessageNamedByExpressionTest}.
+   */
+  private boolean startsByMessage(
+      final String processDefinitionId,
+      final String scopedProcessId,
+      final String scopedMessageName) {
+
+    return repositoryService
+        .getBpmnModelInstance(processDefinitionId)
+        .getModelElementsByType(org.operaton.bpm.model.bpmn.instance.StartEvent.class)
+        .stream()
+        .filter(startEvent -> (startEvent
+            .getParentElement() instanceof org.operaton.bpm.model.bpmn.instance.Process process) && scopedProcessId
+                .equals(process.getId()))
+        .flatMap(startEvent -> startEvent.getEventDefinitions().stream())
+        .filter(org.operaton.bpm.model.bpmn.instance.MessageEventDefinition.class::isInstance)
+        .map(org.operaton.bpm.model.bpmn.instance.MessageEventDefinition.class::cast)
+        .anyMatch(definition -> (definition.getMessage() != null) && scopedMessageName
+            .equals(definition.getMessage().getName()));
+
+  }
+
+  /**
+   * Whether a RUNNING instance of the given workflow exists. This is the idempotency
+   * check of the two-phase start. It uses the module's tenant and the scoped process id.
+   */
+  private boolean instanceExists(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final String businessKey) {
+
+    var query = runtimeService
+        .createProcessInstanceQuery()
+        .processInstanceBusinessKey(businessKey)
+        .processDefinitionKey(scopedProcessId(workflowModuleId, bpmnProcessId));
+    final var tenantId = tenantIdOf(workflowModuleId);
+    query = tenantId != null
+        ? query.tenantIdIn(tenantId)
+        : query.withoutTenantId();
+    return query.count() > 0;
+
+  }
+
+  /**
+   * The BPMN process id as the engine knows it.
+   */
+  private String scopedProcessId(
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    return scoping == null
+        ? bpmnProcessId
+        : scoping.scopedProcessId(workflowModuleId, bpmnProcessId, adapterId);
+
+  }
+
+  /**
+   * A message name / error code as the engine knows it.
+   */
+  private String scopedIdentifier(
+      final String workflowModuleId,
+      final String identifier) {
+
+    return scoping == null
+        ? identifier
+        : scoping.scopedIdentifier(workflowModuleId, identifier, adapterId);
+
+  }
+
+  /**
+   * The Camunda tenant an operation runs in, or <code>null</code> when the module's
+   * mode uses no tenant.
+   */
+  private String tenantIdOf(
+      final String workflowModuleId) {
+
+    final var configured = configuredTenants != null
+        ? configuredTenants.apply(workflowModuleId)
+        : null;
+    return OperatonScoping
+        .tenantIdFor(
+            scoping,
+            workflowModuleId,
+            adapterId,
+            configured != null
+                ? configured.tenantId()
+                : null);
+
+  }
+
+  /**
+   * What Operaton does with that type. With it the startup check can say what happens to a
+   * value which travels between the application and this BPMS.
+   *
+   * @param valueType The declared type of the value
+   * @param direction Which way the value travels
+   * @return The verdict of this adapter
+   */
+  @Override
+  public io.vanillabp.integration.adapter.spi.values.ValueTypeVerdict whatThisBpmsDoesWith(
+      final Class<?> valueType,
+      final io.vanillabp.integration.adapter.spi.values.ValueDirection direction) {
+
+    return OperatonValueTypes.verdictFor(valueType, direction);
+
+  }
+
+  /**
+   * Builds the service. It is the only constructor. The sync model, the scoping and the
+   * rest come from the collaborators. Where they carry no sync model (tests), no operator
+   * context is written.
+   *
+   * @param adapterId The configured adapter id this service serves
+   * @param runtimeService The engine's runtime, where a workflow is started and a message
+   *          is correlated
+   * @param taskService The engine's tasks, where a user task is completed
+   * @param repositoryService The engine's repository, asked which definition a workflow
+   *          runs on
+   * @param historyService The engine's history, which is what the viewer API reads
+   * @param collaborators Everything the platform hands over; the sync model is taken from
+   *          here where there is one
+   */
+  public OperatonProcessService(
+      final String adapterId,
+      final RuntimeService runtimeService,
+      final org.operaton.bpm.engine.TaskService taskService,
+      final org.operaton.bpm.engine.RepositoryService repositoryService,
+      final org.operaton.bpm.engine.HistoryService historyService,
+      final io.vanillabp.integration.adapter.spi.AdapterCollaborators collaborators) {
+
+    this.collaborators = collaborators;
+    this.aggregateSync = collaborators.workflowAggregateSync();
+    this.scoping = collaborators.scoping();
+    this.adapterId = adapterId;
+    this.runtimeService = runtimeService;
+    this.taskService = taskService;
+    this.historyService = historyService;
+    this.repositoryService = repositoryService;
+    this.viewer = new OperatonWorkflowViewer(adapterId, repositoryService, historyService, runtimeService);
+
+  }
+
+  @Override
+  public String getAdapterId() {
+
+    return adapterId;
+
+  }
+
+  /**
+   * What this adapter does for each operation, in both phases.
+   * <p>
+   * Every handler asks in phase one and acts in phase two. Every phase-two half is
+   * idempotent, because the outbox dispatches at-least-once. Starting skips an instance
+   * which already carries the business key. Completing or cancelling checks that the
+   * task is still there. Correlating checks the subscription. The embedded engine answers
+   * phase one from the caller's own transaction. So a task which does not exist, or a
+   * message nothing waits for, is reported where the application asked for it.
+   */
+  @Override
+  public Map<PhaseOperation, PhaseOperationHandler<A>> phaseOperations() {
+
+    return Map
+        .ofEntries(
+            Map
+                .entry(
+                    PhaseOperation.START_WORKFLOW,
+                    PhaseOperationHandler
+                        .of(
+                            request -> {
+                              // phase one does not move the process on. The instance is created
+                              // after the commit, so a rollback cannot leave a ghost instance
+                              // behind. There is nothing to check against the engine either.
+                              // Starting is the degenerate two-phase case, like on a remote BPMS
+                            },
+                            this::startWorkflow)),
+            Map
+                .entry(
+                    PhaseOperation.START_WORKFLOW_BY_MESSAGE,
+                    PhaseOperationHandler.of(this::checkMessageStartEventExists, this::startWorkflowByMessage)),
+            Map
+                .entry(
+                    PhaseOperation.COMPLETE_TASK,
+                    PhaseOperationHandler
+                        .of(
+                            // the phase-one check, which moves nothing on: does the task still
+                            // exist? The completion itself happens after the commit. Here it
+                            // would move the process on although the transaction may still roll
+                            // back. And a completion which loses a concurrency conflict could
+                            // not be repeated
+                            request -> checkTaskExists(request.taskId(), "completing"),
+                            this::completeTask)),
+            Map
+                .entry(
+                    PhaseOperation.CANCEL_TASK,
+                    PhaseOperationHandler
+                        .of(
+                            // the phase-one check, which moves nothing on. The cancellation and
+                            // the values an operator sees with it happen after the commit
+                            request -> checkTaskExists(request.taskId(), "canceling"),
+                            this::cancelTask)),
+            Map
+                .entry(
+                    PhaseOperation.COMPLETE_USER_TASK,
+                    PhaseOperationHandler
+                        .of(
+                            // the phase-one check, which moves nothing on. The completion
+                            // happens after the commit
+                            request -> checkUserTaskExists(request.taskId(), "completing"),
+                            this::completeUserTask)),
+            Map
+                .entry(
+                    PhaseOperation.CANCEL_USER_TASK,
+                    PhaseOperationHandler
+                        .of(
+                            request -> checkUserTaskExists(request.taskId(), "canceling"),
+                            this::cancelUserTask)),
+            Map
+                .entry(
+                    PhaseOperation.CORRELATE_MESSAGE,
+                    PhaseOperationHandler.of(this::checkSubscriptionWaits, this::correlateMessage)),
+            Map
+                .entry(
+                    PhaseOperation.SEND_SIGNAL,
+                    PhaseOperationHandler
+                        .of(
+                            request -> {
+                              // phase one does not move the process on. A signal which reaches a
+                              // subscription IS progress, so it is broadcast after the commit
+                            },
+                            request -> broadcastSignal(request.workflowModuleId(), request.signalName()))),
+            Map
+                .entry(
+                    PhaseOperation.AGGREGATE_CHANGED,
+                    PhaseOperationHandler
+                        .of(
+                            request -> {
+                              // phase one does not move the process on. Writing here would show
+                              // values of a transaction which may still roll back. And
+                              // evaluating conditional events again IS progress
+                            },
+                            this::pushChangedAggregate)));
+
+  }
+
+  /**
+   * Creates the instance, unless one for this aggregate is already running.
+   * <p>
+   * Phase two is dispatched at-least-once (outbox retries, crash recovery). So the check
+   * is needed. But it is the SECOND line, not the mechanism. The core owns the idempotency
+   * of a start. It probes {@code awarenessOfWorkflowForRedispatch} before it dispatches a
+   * start again, and this adapter answers that exactly. The check stays for two reasons.
+   * The query is free on an embedded engine. And it also covers a start which reached the
+   * engine while the core had no reason to probe again.
+   */
+  private void startWorkflow(
+      final PhaseTwoRequest<A> request) {
+
+    final var businessKey = String.valueOf(request.workflowAggregateId());
+    if (instanceExists(request.workflowModuleId(), request.bpmnProcessId(), businessKey)) {
+      log
+          .info(
+              "Operaton[{}]: workflow '{}' of module '{}' was already started for aggregate '{}' - "
+                  + "skipping the redelivered phase-two start",
+              adapterId,
+              request.bpmnProcessId(),
+              request.workflowModuleId(),
+              businessKey);
+      return;
+    }
+
+    // the aggregate is committed by now. So its shared attributes can be written as the
+    // operator context of the new instance. Phase one had it at hand, phase two has to
+    // read it back
+    final var started = startProcessInstance(
+        request.workflowModuleId(),
+        request.bpmnProcessId(),
+        request.workflowAggregateId(),
+        aggregateForOperatorContext(request.aggregatePersistence(), request.workflowAggregateId()));
+    // a start creates the root of a call tree. So this instance is the workflow the
+    // aggregate IS. It is named the way a task of it reports its workflow id
+    request.reportStartedWorkflow(started.getProcessInstanceId(), versionOfTheDefinitionOf(started));
+
+  }
+
+  /**
+   * The phase-one check of a start by message, which moves nothing on. Does the process of
+   * the caller's process service have a message start event of this name? Phase two names
+   * the same process definition. So phase two can correlate a message which passes here.
+   * The start itself happens after the commit, and it is idempotent.
+   */
+  private void checkMessageStartEventExists(
+      final PhaseOneRequest<A> request) {
+
+    final var scopedMessageName = scopedIdentifier(request.workflowModuleId(), request.messageName());
+    final var definitionId = definitionStartedByMessages(request.workflowModuleId(), request.bpmnProcessId());
+    final var scopedProcessId = scopedProcessId(request.workflowModuleId(), request.bpmnProcessId());
+    if (!startsByMessage(definitionId, scopedProcessId, scopedMessageName)) {
+      throw new IllegalStateException(
+          """
+              BPMN process '%s' of workflow module '%s' has no message start event named '%s' in \
+              the model adapter '%s' starts! A message starts only the process of the process \
+              service you called. Check the message name against the model of that process. \
+              Operaton does not support an expression as the name of a message start event, so \
+              the name you pass has to be the plain name the model writes."""
+              .formatted(request.bpmnProcessId(), request.workflowModuleId(), request.messageName(), adapterId));
+    }
+
+  }
+
+  /**
+   * Starts the workflow by its message start event, unless one for this aggregate is
+   * already running. The idempotency contract is the same as for {@link #startWorkflow}.
+   */
+  private void startWorkflowByMessage(
+      final PhaseTwoRequest<A> request) {
+
+    final var businessKey = String.valueOf(request.workflowAggregateId());
+    if (instanceExists(request.workflowModuleId(), request.bpmnProcessId(), businessKey)) {
+      log
+          .info(
+              "Operaton[{}]: workflow '{}' of module '{}' was already started for aggregate '{}' - "
+                  + "skipping the redelivered phase-two start-by-message",
+              adapterId,
+              request.bpmnProcessId(),
+              request.workflowModuleId(),
+              businessKey);
+      return;
+    }
+    final var started = startByMessage(
+        request.workflowModuleId(),
+        request.bpmnProcessId(),
+        request.messageName(),
+        businessKey,
+        sharedValues(
+            request.aggregatePersistence(),
+            request.workflowAggregateId(),
+            request.workflowModuleId(),
+            request.bpmnProcessId()));
+    request.reportStartedWorkflow(started.getProcessInstanceId(), versionOfTheDefinitionOf(started));
+
+  }
+
+  /**
+   * Completes the parked task. The values the model reads are written along with the
+   * completion. Whatever the caller changed before answering the task decides where the
+   * workflow goes next. They are written only after {@code signalTask} verified that the
+   * task is still there. Writing variables of a gone execution would mark the
+   * dispatcher's transaction rollback-only.
+   */
+  private void completeTask(
+      final PhaseTwoRequest<A> request) {
+
+    signalTask(
+        request.taskId(),
+        null,
+        true,
+        () -> refreshSharedValues(
+            request.taskId(),
+            aggregateForOperatorContext(request.aggregatePersistence(), request.workflowAggregateId()),
+            request.workflowModuleId(),
+            request.bpmnProcessId()));
+
+  }
+
+  /**
+   * Cancels the parked task by BPMN error. The values an operator sees in Cockpit are
+   * refreshed along with the cancellation. This happens only once {@code signalTask}
+   * verified that the task is still there.
+   */
+  private void cancelTask(
+      final PhaseTwoRequest<A> request) {
+
+    signalTask(
+        request.taskId(),
+        scopedIdentifier(request.workflowModuleId(), request.bpmnErrorCode()),
+        true,
+        () -> {
+          final var workflowAggregate = request.aggregatePersistence().loadById(request.workflowAggregateId());
+          if (workflowAggregate != null) {
+            refreshSharedValues(
+                request.taskId(), workflowAggregate, request.workflowModuleId(), request.bpmnProcessId());
+          }
+        });
+
+  }
+
+  private void completeUserTask(
+      final PhaseTwoRequest<A> request) {
+
+    executeUserTask(
+        request.taskId(),
+        null,
+        true,
+        () -> refreshSharedValuesOfUserTask(
+            request.taskId(),
+            request.aggregatePersistence(),
+            request.workflowAggregateId(),
+            request.workflowModuleId(),
+            request.bpmnProcessId()));
+
+  }
+
+  private void cancelUserTask(
+      final PhaseTwoRequest<A> request) {
+
+    executeUserTask(
+        request.taskId(),
+        scopedIdentifier(request.workflowModuleId(), request.bpmnErrorCode()),
+        true,
+        () -> refreshSharedValuesOfUserTask(
+            request.taskId(),
+            request.aggregatePersistence(),
+            request.workflowAggregateId(),
+            request.workflowModuleId(),
+            request.bpmnProcessId()));
+
+  }
+
+  /**
+   * The phase-one check of a correlation, which moves nothing on: is a subscription
+   * waiting for this message? Correlating itself moves the workflow on, so it happens
+   * after the commit. But "nothing matched" was a synchronous failure before this adapter
+   * went two-phase, and it stays one. The embedded engine answers from the same
+   * transaction, so the answer is exact.
+   */
+  private void checkSubscriptionWaits(
+      final PhaseOneRequest<A> request) {
+
+    final var businessKey = String
+        .valueOf(request.aggregatePersistence().getAggregateId(request.workflowAggregate()));
+    if (!subscriptionWaitingFor(
+        request.workflowModuleId(),
+        request.bpmnProcessId(),
+        request.messageName(),
+        businessKey,
+        request.correlationId())) {
+      throw new IllegalStateException(
+          """
+              No execution of workflow aggregate '%s' waits for message '%s' (BPMN process '%s' of \
+              workflow module '%s')%s! Correlating it would do nothing - check the message name \
+              against the model, and whether the workflow already passed the point where it waits."""
+              .formatted(
+                  businessKey,
+                  request.messageName(),
+                  request.bpmnProcessId(),
+                  request.workflowModuleId(),
+                  request.correlationId() == null
+                      ? ""
+                      : (" with correlation id '%s' (the waiting execution expects the one stored in "
+                          + "its local variable '%s')").formatted(
+                              request.correlationId(),
+                              correlationIdVariableName(request.bpmnProcessId(), request.messageName()))));
+    }
+
+  }
+
+  private void correlateMessage(
+      final PhaseTwoRequest<A> request) {
+
+    final var businessKey = String.valueOf(request.workflowAggregateId());
+    // check BEFORE correlating (rollback-only pitfall, see signalTask). A waiting
+    // subscription which is gone at dispatch time is what at-least-once leaves over
+    if (!messageSubscriptionWaiting(request.workflowModuleId(), request.messageName(), businessKey)) {
+      log
+          .warn(
+              "Operaton[{}]: no waiting subscription for message '{}' of workflow aggregate '{}' - "
+                  + "skipping the redelivered phase-two correlation",
+              adapterId,
+              request.messageName(),
+              businessKey);
+      return;
+    }
+    // the values the model reads travel with the correlation. A gateway behind the
+    // receiving event decides on what the caller changed before correlating. They land
+    // in the instance which waits, so they are written in the format of its process.
+    // Where executions of several instances wait, the engine picks one. Then the format
+    // of the process of the call is the answer, as before
+    final var waitingInstances = executionsExpecting(
+        request.workflowModuleId(),
+        request.bpmnProcessId(),
+        request.messageName(),
+        businessKey,
+        request.correlationId())
+        .stream()
+        .map(org.operaton.bpm.engine.runtime.Execution::getProcessInstanceId)
+        .distinct()
+        .toList();
+    messageCorrelation(
+        request.workflowModuleId(),
+        request.bpmnProcessId(),
+        request.messageName(),
+        businessKey,
+        request.correlationId())
+        .setVariables(
+            sharedValuesOfTheInstance(
+                aggregateForOperatorContext(request.aggregatePersistence(), request.workflowAggregateId()),
+                waitingInstances.size() == 1
+                    ? waitingInstances.get(0)
+                    : null,
+                request.workflowModuleId(),
+                request.bpmnProcessId()))
+        .correlateWithResult();
+
+  }
+
+  private void pushChangedAggregate(
+      final PhaseTwoRequest<A> request) {
+
+    final var aggregate = request.aggregatePersistence().loadById(request.workflowAggregateId());
+    pushAggregate(
+        String.valueOf(request.workflowAggregateId()),
+        aggregate,
+        request.taskId(),
+        true,
+        request.workflowModuleId(),
+        request.bpmnProcessId());
+
+  }
+
+  @Override
+  public boolean isPhaseTwoFailureRepeatable(
+      final Throwable failure) {
+
+    // The conflict this adapter went two-phase for: the engine reports a row which
+    // another transaction touched as OptimisticLockingException. The next attempt simply
+    // wins. Camunda's own job executor does exactly that with a failed job. Everything
+    // else is repeated as well, because an engine command may fail for a reason which
+    // passes: a locked instance, or a database which was briefly away.
+    //
+    // Three failures never pass. The first is a request the engine rejects as wrong. It
+    // looks the same on every attempt: a task id which does not exist, or an argument the
+    // engine cannot accept. The second is a broken expression. Not every one of them is
+    // hopeless. A navigation into an attribute which is null today could read a value
+    // tomorrow. But an expression which fails while an instance is created loses the
+    // instance. Nothing in the engine shows it, and nobody in the application waits for
+    // it. So hours of attempts help no one. If we give up early, there is at least an
+    // entry somebody can find.
+    //
+    // The third is a start of a process the engine does not hold. It is a case of its
+    // own. The engine reports it with an exception which is repeatable for every other
+    // operation. So the start marks its own refusal (OperatonRefusedStart).
+    var candidate = failure;
+    while (candidate != null) {
+      if (candidate instanceof OperatonRefusedStart) {
+        return false;
+      }
+      if (candidate instanceof org.operaton.bpm.engine.BadUserRequestException) {
+        return false;
+      }
+      if (isExpressionFailure(candidate)) {
+        return false;
+      }
+      candidate = candidate.getCause() == candidate
+          ? null
+          : candidate.getCause();
+    }
+    return true;
+
+  }
+
+  /**
+   * Operaton wraps what its expression language threw into a
+   * {@link org.operaton.bpm.engine.ProcessEngineException} and keeps it as the cause. So
+   * the type tells an unreadable expression from an engine which has a bad moment. The
+   * message does not. It is prose which differs per failure and per engine version.
+   * <p>
+   * The type is matched by name, not imported. Camunda ships its expression language
+   * shaded into a package of its own implementation. That package already moved once,
+   * when the EL API went from <code>javax</code> to <code>jakarta</code>. And a fork of
+   * the engine shades it somewhere else again. Reading the last two segments of the name
+   * survives that. It costs nothing here, because the adapter only recognises the type.
+   * It never catches or constructs one.
+   *
+   * @param candidate One link of the cause chain
+   * @return Whether it is a failure of the expression language, the subclasses for an
+   *         unknown method and for an unknown property included
+   */
+  private static boolean isExpressionFailure(
+      final Throwable candidate) {
+
+    Class<?> type = candidate.getClass();
+    while (type != null) {
+      if (type.getName().endsWith(EXPRESSION_FAILURE)) {
+        return true;
+      }
+      type = type.getSuperclass();
+    }
+    return false;
+
+  }
+
+  @Override
+  public boolean deliversTasksAtLeastOnce() {
+
+    // On the application's datasource Operaton hands a task to the handler INSIDE its
+    // own (job) transaction (TaskInvocationContext#runInCurrentTransaction). So
+    // aggregate changes and engine state commit or roll back together. A redelivered job
+    // proves that NOTHING was committed. So there is nothing to deduplicate. A delivery
+    // record is still written, see decision 6 in the Camunda 7 adapter's DECISIONS.md, but
+    // deduplicating would cost a store access per task and buy nothing.
+    //
+    // An engine on a datasource of its own commits where the application's persistence
+    // cannot join. So the aggregate commits first, and the job after it. A crash in
+    // between leaves the engine with work whose end it never saw. It hands the same job
+    // out again. Every remote BPMS has this window. The job names that delivery. So the
+    // core recognizes the repetition and answers it from what it recorded
+    return engineRunsOnItsOwnDataSource;
+
+  }
+
+  /**
+   * Starts an Operaton process instance. The <b>business key</b> is the
+   * workflow-aggregate ID as a string. The process is addressed the way
+   * {@code OperatonDeploymentService} deployed it. The name-clash-avoidance mode decides
+   * that: a tenant named after the workflow module, prefixed identifiers, or neither.
+   * <p>
+   * This runs in phase two, after the caller's transaction committed. The phase-two
+   * outbox dispatches it, like every operation which moves a workflow on here (see
+   * decision 2 in the Camunda 7 adapter's DECISIONS.md). So the instance is NOT committed
+   * together with the caller's business data. The outbox entry is. And the entry is
+   * repeated until the engine accepted the start.
+   * <p>
+   * The service task after the (asynchronous) start event does not run synchronously.
+   * The async-before continuation parks the instance in the job executor. So the start
+   * succeeds without any {@code @WorkflowTask} wiring.
+   *
+   * @param workflowModuleId The workflow module ID, which names the Camunda tenant under
+   *        {@code by-adapter} and prefixes the process id under {@code use-prefix}
+   * @param bpmnProcessId The BPMN process ID to start
+   * @param workflowAggregateId The workflow-aggregate ID (used as the business key)
+   * @return The started process instance
+   */
+  public ProcessInstance startProcessInstance(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final Object workflowAggregateId) {
+
+    return startProcessInstance(workflowModuleId, bpmnProcessId, workflowAggregateId, null);
+
+  }
+
+  /**
+   * Starts a process instance and writes the aggregate's shared attributes as process
+   * variables. They are CONTEXT INFORMATION FOR OPERATORS only (see
+   * {@link #aggregateSync}). Nothing reads them back.
+   *
+   * @param workflowModuleId The workflow module ID, which names the Camunda tenant under
+   *        {@code by-adapter} and prefixes the process id under {@code use-prefix}
+   * @param bpmnProcessId The BPMN process ID to start
+   * @param workflowAggregateId The workflow-aggregate ID (the business key)
+   * @param aggregate The workflow aggregate or <code>null</code> if unavailable
+   * @return The started process instance
+   */
+  public ProcessInstance startProcessInstance(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final Object workflowAggregateId,
+      final A aggregate) {
+
+    // the core's MigrationProcessService validated the aggregate id once (non-null,
+    // non-blank) before phase one is invoked
+    final var businessKey = String.valueOf(workflowAggregateId);
+
+    final var tenantId = tenantIdOf(workflowModuleId);
+    final var scopedProcessId = scopedProcessId(workflowModuleId, bpmnProcessId);
+    var builder = runtimeService
+        .createProcessInstanceByKey(scopedProcessId);
+    builder = tenantId != null
+        ? builder.processDefinitionTenantId(tenantId)
+        : builder.processDefinitionWithoutTenantId();
+    final ProcessInstance processInstance;
+    try {
+      processInstance = builder
+          .businessKey(businessKey)
+          .setVariables(sharedValues(aggregate, workflowModuleId, bpmnProcessId))
+          .execute();
+    } catch (final org.operaton.bpm.engine.exception.NullValueException e) {
+      // the one thing the engine can miss here is the process definition. The command is
+      // built from values the core validated. For a definition nothing was deployed under,
+      // the engine throws the same exception as for an argument nobody passed. Only the
+      // operation tells which one it is, not the exception. So the start says it here, and
+      // the classification reads it back
+      throw new OperatonRefusedStart(
+          ("Operaton holds no process '%s' of workflow module '%s'%s, so the workflow of aggregate "
+              + "'%s' cannot be started (adapter '%s'). The engine answers the same way on every "
+              + "attempt, so this start is not repeated and its outbox entry is blocked. Either the "
+              + "workflow module of that process is not deployed by this application, or it is "
+              + "deployed under another name-clash-avoidance mode than the one this adapter reads.")
+              .formatted(
+                  scopedProcessId,
+                  workflowModuleId,
+                  tenantId == null
+                      ? " without a tenant"
+                      : " in tenant '%s'".formatted(tenantId),
+                  businessKey,
+                  adapterId), e);
+    }
+
+    // what the engine was really given, not what the caller asked for. The tenant is null
+    // unless the mode of this module is 'by-adapter'. The process id carries the module's
+    // prefix under 'use-prefix'. A module id in the tenant's place would send the next
+    // reader looking for a scope the engine does not have
+    log.info(
+        "Operaton[{}]: started workflow '{}' of workflow module '{}' ({}tenant '{}', business key "
+            + "'{}') as process instance '{}'",
+        adapterId,
+        bpmnProcessId,
+        workflowModuleId,
+        scopedProcessId.equals(bpmnProcessId)
+            ? ""
+            : "deployed as '%s', ".formatted(scopedProcessId),
+        tenantId != null
+            ? tenantId
+            : "<none>",
+        businessKey,
+        processInstance.getId());
+
+    return processInstance;
+
+  }
+
+  /**
+   * The values the aggregate shares with the BPMS, as Operaton process variables. The
+   * engine's expressions read them, and an operator sees them in Cockpit. A nested
+   * structure travels in the engine's own serialization format (see decision 9 in the
+   * Camunda 7 adapter's DECISIONS.md and {@link io.vanillabp.operaton.sync.OperatonVariables}).
+   *
+   * @param aggregate The workflow aggregate or <code>null</code>
+   * @return The variables (never <code>null</code>)
+   */
+  private java.util.Map<String, Object> sharedValues(
+      final A aggregate,
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    return sharedValues(aggregate, () -> serializationFormatOf(workflowModuleId, bpmnProcessId));
+
+  }
+
+  /**
+   * The shared values in the format a supplier names. The supplier is asked only where there
+   * is something to write. Finding out which process an instance runs costs a query.
+   *
+   * @param aggregate The workflow aggregate or <code>null</code>
+   * @param serializationFormat Says which format a nested value is written in
+   * @return The variables (never <code>null</code>)
+   */
+  private java.util.Map<String, Object> sharedValues(
+      final A aggregate,
+      final java.util.function.Supplier<String> serializationFormat) {
+
+    if ((aggregateSync == null) || (aggregate == null)) {
+      return java.util.Map.of();
+    }
+    return OperatonVariables
+        .of(
+            aggregateSync.syncedValues(aggregate, SYNC_MODE),
+            serializationFormat.get());
+
+  }
+
+  /**
+   * The shared values to write into one process instance, in the format of the BPMN process
+   * that instance runs.
+   * <p>
+   * A process service belongs to the process at the top, so the request names that process.
+   * But a task, a waiting message and a called process belong to the process which contains
+   * them. And in Operaton a called process is a process instance of its own. The format is
+   * configured per BPMN process. So it is read under the id of the process the values are
+   * written into. The task path does the same when the engine hands a task to the
+   * application. See decision 45 in the Camunda 7 adapter's DECISIONS.md.
+   *
+   * @param aggregate The workflow aggregate or <code>null</code>
+   * @param processInstanceId The instance the values are written into, or <code>null</code>
+   *          where it is not known
+   * @param workflowModuleId The workflow module of the call
+   * @param bpmnProcessId The BPMN process of the call
+   * @return The variables (never <code>null</code>)
+   */
+  private java.util.Map<String, Object> sharedValuesOfTheInstance(
+      final A aggregate,
+      final String processInstanceId,
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    return sharedValues(aggregate, () -> {
+      final var process = processOfTheInstance(processInstanceId, workflowModuleId, bpmnProcessId);
+      return serializationFormatOf(process.workflowModuleId(), process.bpmnProcessId());
+    });
+
+  }
+
+  /**
+   * The workflow module and the plain BPMN process id of the process an instance runs.
+   * <p>
+   * Sometimes this cannot be told: the instance is gone, the registry is missing (tests), or
+   * the instance runs a process this adapter did not deploy. Then the process of the call is
+   * the answer. Every operation gave that answer before it asked.
+   *
+   * @param processInstanceId The process instance, or <code>null</code>
+   * @param workflowModuleId The workflow module of the call
+   * @param bpmnProcessId The BPMN process of the call
+   * @return The process the instance runs
+   */
+  private OperatonTaskRegistry.WorkflowProcess processOfTheInstance(
+      final String processInstanceId,
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    final var processOfTheCall = new OperatonTaskRegistry.WorkflowProcess(
+        workflowModuleId, bpmnProcessId);
+    if ((taskRegistry == null) || (processInstanceId == null)) {
+      return processOfTheCall;
+    }
+    final var instance = runtimeService
+        .createProcessInstanceQuery()
+        .processInstanceId(processInstanceId)
+        .singleResult();
+    if (instance == null) {
+      return processOfTheCall;
+    }
+    final var definition = repositoryService.getProcessDefinition(instance.getProcessDefinitionId());
+    return taskRegistry
+        .resolve(instance.getTenantId(), definition.getKey())
+        .orElse(processOfTheCall);
+
+  }
+
+  /**
+   * The process instance an execution belongs to.
+   *
+   * @param executionId The execution, a task of a <code>&#64;TaskId</code> handler
+   * @return The process instance, or <code>null</code> where the execution is gone
+   */
+  private String processInstanceOfTheExecution(
+      final String executionId) {
+
+    final var execution = runtimeService
+        .createExecutionQuery()
+        .executionId(executionId)
+        .singleResult();
+    return execution == null
+        ? null
+        : execution.getProcessInstanceId();
+
+  }
+
+  /**
+   * The shared values of an aggregate which this method has to read first. Phase two needs
+   * this shape. There the caller's transaction is committed, and only the ID is at hand.
+   * A persistence which cannot read the aggregate must not stop the operation. So a
+   * failure gives no variables, and no exception.
+   *
+   * @param aggregatePersistence The aggregate's persistence (may be
+   *          <code>null</code>)
+   * @param workflowAggregateId The aggregate's ID
+   * @return The variables (never <code>null</code>)
+   */
+  private java.util.Map<String, Object> sharedValues(
+      final AggregatePersistenceAware<A> aggregatePersistence,
+      final Object workflowAggregateId,
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    return sharedValues(
+        aggregateForOperatorContext(aggregatePersistence, workflowAggregateId),
+        workflowModuleId,
+        bpmnProcessId);
+
+  }
+
+  /**
+   * Writes the shared values into a running workflow (see {@link #sharedValues}). It
+   * does nothing where the aggregate shares nothing at all.
+   *
+   * @param executionId The execution to write the variables at
+   * @param aggregate The workflow aggregate or <code>null</code>
+   */
+  private void refreshSharedValues(
+      final String executionId,
+      final A aggregate,
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    final var variables = sharedValuesOfTheInstance(
+        aggregate,
+        processInstanceOfTheExecution(executionId),
+        workflowModuleId,
+        bpmnProcessId);
+    if (variables.isEmpty()) {
+      return;
+    }
+    runtimeService.setVariables(executionId, variables);
+
+  }
+
+  @Override
+  public WorkflowAwareness awarenessOfTask(
+      final io.vanillabp.integration.adapter.spi.WorkflowScope scope,
+      final Object workflowAggregateId,
+      final String taskId) {
+
+    // the task ID of an Operaton @TaskId handler is the parked execution's ID. It is
+    // unique within the engine. A matching business key rules out an unrelated
+    // aggregate. It does NOT rule out a workflow of another workflow module of this
+    // engine with the same aggregate id. So the instance has to be in one of this
+    // adapter's own scopes as well
+    try {
+      final var execution = runtimeService
+          .createExecutionQuery()
+          .executionId(taskId)
+          .singleResult();
+      if (execution == null) {
+        return WorkflowAwareness.UNKNOWN_TO_BPMS;
+      }
+      return awarenessOfInstance(scope, execution.getProcessInstanceId(), workflowAggregateId);
+    } catch (final org.operaton.bpm.engine.ProcessEngineException e) {
+      // an embedded engine which shares the application's datasource can hardly be
+      // unavailable. An engine on its OWN datasource can. Never fall back to another
+      // adapter in that case (contract)
+      log.warn(
+          "Operaton[{}]: could not determine awareness of task '{}' - reporting BPMS_UNAVAILABLE",
+          adapterId,
+          taskId,
+          e);
+      return WorkflowAwareness.BPMS_UNAVAILABLE;
+    }
+
+  }
+
+  @Override
+  public WorkflowAwareness awarenessOfWorkflow(
+      final io.vanillabp.integration.adapter.spi.WorkflowScope scope,
+      final io.vanillabp.integration.spi.AggregatePersistenceAware<A> aggregatePersistence,
+      final Object workflowAggregateId) {
+
+    // the business key IS the aggregate ID. A running instance means ACTIVE. An
+    // ENDED one is reported as COMPLETED as long as the engine's history still
+    // holds it (history level != NONE and within 'history-time-to-live'). This is
+    // the honest answer the SPI asks for. It keeps a re-dispatched start from
+    // starting a second instance of a workflow which already ran to its end. And
+    // it makes the viewer and history API work for ended workflows. Once the history
+    // was cleaned up, an ended instance looks the same as one which never existed.
+    // Both map to UNKNOWN_TO_BPMS (the caller's guiding error explains the causes).
+    // Both queries run within the scope the probe was asked about.
+    // A business key is the aggregate id. It is unique per aggregate type, but not
+    // across an application. So the unscoped question would answer ACTIVE for the
+    // workflow of another workflow module of this engine which counts from the same number.
+    try {
+      final var businessKey = String.valueOf(workflowAggregateId);
+      final var active = within(
+          runtimeService
+              .createProcessInstanceQuery()
+              .processInstanceBusinessKey(businessKey),
+          scope)
+          .count() > 0;
+      if (active) {
+        return WorkflowAwareness.ACTIVE;
+      }
+      final var ended = withinHistory(
+          historyService
+              .createHistoricProcessInstanceQuery()
+              .processInstanceBusinessKey(businessKey)
+              .finished(),
+          scope)
+          .count() > 0;
+      return ended
+          ? WorkflowAwareness.COMPLETED
+          : WorkflowAwareness.UNKNOWN_TO_BPMS;
+    } catch (final org.operaton.bpm.engine.ProcessEngineException e) {
+      log.warn(
+          "Operaton[{}]: could not determine awareness of the workflow of aggregate '{}' - "
+              + "reporting BPMS_UNAVAILABLE",
+          adapterId,
+          workflowAggregateId,
+          e);
+      return WorkflowAwareness.BPMS_UNAVAILABLE;
+    }
+
+  }
+
+  /**
+   * Counts only the workflows of the aggregate which started at or after the moment the start
+   * was planned.
+   * <p>
+   * An aggregate may carry a second workflow once its first one ended. Say the first attempt to
+   * dispatch the second start failed before it created anything. The history still holds the
+   * first workflow. Counting it would skip the start, and the second workflow would never run.
+   * So the history is asked only for instances started since <code>plannedAt</code>. Camunda
+   * compares the start time inclusively. It keeps milliseconds, as the moment does.
+   * <p>
+   * The engine runs inside the application. So the start time comes from the clock of one of
+   * the application's nodes, like the moment itself. Two nodes' clocks may differ by more than
+   * the time between planning and dispatching. Then this entry's own workflow looks older than
+   * the entry, and the answer is "unknown". The start then runs again. {@code startWorkflow}
+   * finds the instance as long as it runs. At worst it is a duplicate. The moment is never
+   * moved back to allow for the skew. A moment moved back would count the first workflow again.
+   * <p>
+   * Without history (level <code>none</code>) the query finds nothing, and the same check in
+   * {@code startWorkflow} keeps a running instance from being started twice.
+   */
+  @Override
+  public WorkflowAwareness awarenessOfWorkflowForRedispatch(
+      final io.vanillabp.integration.adapter.spi.WorkflowScope scope,
+      final io.vanillabp.integration.spi.AggregatePersistenceAware<A> aggregatePersistence,
+      final Object workflowAggregateId,
+      final java.time.Instant plannedAt) {
+
+    if (plannedAt == null) {
+      // an entry planned before the moment was recorded: every workflow of the aggregate counts
+      return awarenessOfWorkflow(scope, aggregatePersistence, workflowAggregateId);
+    }
+    try {
+      final var businessKey = String.valueOf(workflowAggregateId);
+      final var since = java.util.Date.from(plannedAt);
+      final var running = withinHistory(
+          historyService
+              .createHistoricProcessInstanceQuery()
+              .processInstanceBusinessKey(businessKey)
+              .startedAfter(since)
+              .unfinished(),
+          scope)
+          .count() > 0;
+      if (running) {
+        return WorkflowAwareness.ACTIVE;
+      }
+      final var ended = withinHistory(
+          historyService
+              .createHistoricProcessInstanceQuery()
+              .processInstanceBusinessKey(businessKey)
+              .startedAfter(since)
+              .finished(),
+          scope)
+          .count() > 0;
+      return ended
+          ? WorkflowAwareness.COMPLETED
+          : WorkflowAwareness.UNKNOWN_TO_BPMS;
+    } catch (final org.operaton.bpm.engine.ProcessEngineException e) {
+      log.warn(
+          "Operaton[{}]: could not determine whether a workflow of aggregate '{}' started since {} - "
+              + "reporting BPMS_UNAVAILABLE",
+          adapterId,
+          workflowAggregateId,
+          plannedAt,
+          e);
+      return WorkflowAwareness.BPMS_UNAVAILABLE;
+    }
+
+  }
+
+  /**
+   * Whether the process instance behind a task belongs to the scope the probe was asked
+   * about AND carries the expected business key. Both are needed. The business key rules
+   * out an unrelated aggregate. The scope rules out the same aggregate id in another
+   * workflow module or another application of this engine.
+   *
+   * @param scope What the probe was asked about
+   * @param processInstanceId The instance the task belongs to
+   * @param workflowAggregateId The aggregate the caller means
+   * @return {@link WorkflowAwareness#ACTIVE} if this adapter may claim the task
+   */
+  private WorkflowAwareness awarenessOfInstance(
+      final io.vanillabp.integration.adapter.spi.WorkflowScope scope,
+      final String processInstanceId,
+      final Object workflowAggregateId) {
+
+    final var own = within(
+        runtimeService
+            .createProcessInstanceQuery()
+            .processInstanceId(processInstanceId)
+            .processInstanceBusinessKey(String.valueOf(workflowAggregateId)),
+        scope)
+        .count() > 0;
+    return own
+        ? WorkflowAwareness.ACTIVE
+        : WorkflowAwareness.UNKNOWN_TO_BPMS;
+
+  }
+
+  /**
+   * Completes (or cancels, if an error code is given) the parked execution of an
+   * asynchronous task by signaling it. The {@code OperatonWorkflowTaskBehavior} then
+   * leaves the activity or propagates the BPMN error. It is phase two of the operation, so
+   * it runs after the caller's commit, in the transaction of the outbox dispatcher (see
+   * decision 2 in the Camunda 7 adapter's DECISIONS.md). An engine on a datasource of its own runs
+   * the command in a transaction of its own.
+   *
+   * @param taskId The parked execution's ID
+   * @param bpmnErrorCode The BPMN error code or <code>null</code> to complete
+   * @param tolerateGoneTask Whether a no-longer-existing execution is tolerated
+   *        (phase two is at-least-once) instead of failing
+   * @param beforeSignal Runs after the task was found and before it is signalled. It
+   *        writes the values the model reads next, which an operator also sees in Cockpit
+   */
+  private void signalTask(
+      final String taskId,
+      final String bpmnErrorCode,
+      final boolean tolerateGoneTask,
+      final Runnable beforeSignal) {
+
+    if (tolerateGoneTask) {
+      // check BEFORE signaling. A failing engine command would mark the joined
+      // transaction rollback-only, even if the exception is caught. Then the outbox
+      // dispatcher's transaction could never commit the DONE entry
+      final var exists = runtimeService
+          .createExecutionQuery()
+          .executionId(taskId)
+          .count() > 0;
+      if (!exists) {
+        // what at-least-once leaves over: the task disappeared between the probe at
+        // dispatch time and this signal (e.g. a boundary event canceled it)
+        log.warn(
+            "Operaton[{}]: task '{}' is gone - skipping the redelivered phase-two {}",
+            adapterId,
+            taskId,
+            bpmnErrorCode == null
+                ? "completion"
+                : "cancellation");
+        return;
+      }
+    }
+    if (beforeSignal != null) {
+      beforeSignal.run();
+    }
+    if (bpmnErrorCode == null) {
+      runtimeService.signal(taskId);
+    } else {
+      runtimeService.signal(
+          taskId,
+          OperatonWorkflowTaskBehavior.SIGNAL_CANCEL,
+          bpmnErrorCode,
+          java.util.Map.of());
+    }
+
+  }
+
+  @Override
+  public WorkflowAwareness awarenessOfUserTask(
+      final io.vanillabp.integration.adapter.spi.WorkflowScope scope,
+      final Object workflowAggregateId,
+      final String taskId) {
+
+    // user-task IDs (ACT_RU_TASK) are unique within the engine. The business key AND
+    // the scope are verified like in awarenessOfTask
+    try {
+      final var task = taskService
+          .createTaskQuery()
+          .taskId(taskId)
+          .singleResult();
+      if (task == null) {
+        return WorkflowAwareness.UNKNOWN_TO_BPMS;
+      }
+      return awarenessOfInstance(scope, task.getProcessInstanceId(), workflowAggregateId);
+    } catch (final org.operaton.bpm.engine.ProcessEngineException e) {
+      log.warn(
+          "Operaton[{}]: could not determine awareness of user task '{}' - reporting BPMS_UNAVAILABLE",
+          adapterId,
+          taskId,
+          e);
+      return WorkflowAwareness.BPMS_UNAVAILABLE;
+    }
+
+  }
+
+  /**
+   * Completes (or cancels by BPMN error) a user task. It is phase two of the operation, so
+   * it runs after the caller's commit, in the transaction of the outbox dispatcher (see
+   * decision 2 in the Camunda 7 adapter's DECISIONS.md). An engine on a datasource of its own runs
+   * the command in a transaction of its own.
+   *
+   * @param taskId The user task's ID (ACT_RU_TASK)
+   * @param bpmnErrorCode The BPMN error code or <code>null</code> to complete
+   * @param tolerateGoneTask Whether a no-longer-existing task is tolerated (phase
+   *        two is at-least-once)
+   * @param beforeExecute Runs after the user task was found and before it is completed
+   *        or cancelled. It writes the values the model reads next
+   */
+  private void executeUserTask(
+      final String taskId,
+      final String bpmnErrorCode,
+      final boolean tolerateGoneTask,
+      final Runnable beforeExecute) {
+
+    if (tolerateGoneTask) {
+      // check BEFORE executing, see signalTask. A failing engine command would
+      // mark the joined transaction rollback-only, even if the exception is caught
+      final var exists = taskService
+          .createTaskQuery()
+          .taskId(taskId)
+          .count() > 0;
+      if (!exists) {
+        log.warn(
+            "Operaton[{}]: user task '{}' is gone - skipping the redelivered phase-two {}",
+            adapterId,
+            taskId,
+            bpmnErrorCode == null
+                ? "completion"
+                : "cancellation");
+        return;
+      }
+    }
+    if (beforeExecute != null) {
+      beforeExecute.run();
+    }
+    if (bpmnErrorCode == null) {
+      taskService.complete(taskId);
+    } else {
+      // routes the workflow through an error boundary event on the user task
+      taskService.handleBpmnError(taskId, bpmnErrorCode);
+    }
+
+  }
+
+  /**
+   * Writes the shared values at the execution of a user task. The flow behind the task
+   * reads these variables.
+   *
+   * @param taskId The user task's ID
+   * @param aggregatePersistence The aggregate's persistence
+   * @param workflowAggregateId The aggregate's ID
+   */
+  private void refreshSharedValuesOfUserTask(
+      final String taskId,
+      final AggregatePersistenceAware<A> aggregatePersistence,
+      final Object workflowAggregateId,
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    final var task = taskService
+        .createTaskQuery()
+        .taskId(taskId)
+        .singleResult();
+    final var variables = sharedValuesOfTheInstance(
+        aggregateForOperatorContext(aggregatePersistence, workflowAggregateId),
+        task == null
+            ? null
+            : task.getProcessInstanceId(),
+        workflowModuleId,
+        bpmnProcessId);
+    if (variables.isEmpty()) {
+      return;
+    }
+    taskService.setVariables(taskId, variables);
+
+  }
+
+  /**
+   * The V1-compatible name of the LOCAL variable which holds the expected correlation
+   * id at a message subscription's execution:
+   * <code>&lt;bpmnProcessId&gt;-&lt;messageName&gt;</code>. Applications set this
+   * local variable at the receiving scope. A correlation with a correlation id only
+   * matches executions whose variable equals it.
+   * <p>
+   * The id is the one of the process service's process, the process at the top. This is
+   * so even where the message is caught in a called process. Every other value of a called
+   * process is read under the called process' own id. This one keeps the version-1 name.
+   * The models set the variable, so no existing model would set a new name. See
+   * decision 45 in the Camunda 7 adapter's DECISIONS.md.
+   *
+   * @param bpmnProcessId The plain BPMN process id of the process service's workflow
+   * @param messageName The plain name of the message it waits for
+   * @return The name of the local variable the correlation id is compared against
+   */
+  public static String correlationIdVariableName(
+      final String bpmnProcessId,
+      final String messageName) {
+
+    return bpmnProcessId
+        + "-"
+        + messageName;
+
+  }
+
+  /**
+   * The phase-one check for a task of a {@code @TaskId} handler, which moves nothing on.
+   * The parked execution has to be there. Otherwise completing or cancelling it after the
+   * commit could only be skipped. The core's election probe asks the same question before
+   * it elects this adapter. Asking again inside the caller's transaction catches a task
+   * which disappeared in between. It aborts the transaction, and it leaves no outbox entry
+   * which phase two can only skip.
+   * <p>
+   * It raises {@code io.vanillabp.spi.process.TaskNotFoundException}. The SPI documents this
+   * type for a task no BPMS knows any more. Which of the two found out, the platform's probe
+   * or this check, depends on whether a delivery record exists. No application can see that.
+   * So it must not decide what an application is able to catch. The query is exact and
+   * answers a count. So there is nothing to classify, and nothing to log about a rejection.
+   *
+   * @param taskId The task (the parked execution's id)
+   * @param operationDescription What was attempted, for the message
+   */
+  private void checkTaskExists(
+      final String taskId,
+      final String operationDescription) {
+
+    final var exists = runtimeService
+        .createExecutionQuery()
+        .executionId(taskId)
+        .count() > 0;
+    if (!exists) {
+      throw new io.vanillabp.spi.process.TaskNotFoundException(
+          """
+              The task '%s' is gone (completed or canceled meanwhile) - aborting the transaction %s \
+              it! VanillaBP progresses the workflow after the commit, so a task which no longer \
+              exists cannot be reached any more."""
+              .formatted(taskId, operationDescription));
+    }
+
+  }
+
+  /**
+   * The same check for a USER task. A user task lives in the task service, not as a
+   * parked execution. The check raises the same exception for the same reason.
+   *
+   * @param taskId The user task's id
+   * @param operationDescription What was attempted, for the message
+   */
+  private void checkUserTaskExists(
+      final String taskId,
+      final String operationDescription) {
+
+    final var exists = taskService
+        .createTaskQuery()
+        .taskId(taskId)
+        .count() > 0;
+    if (!exists) {
+      throw new io.vanillabp.spi.process.TaskNotFoundException(
+          """
+              The user task '%s' is gone (completed or canceled meanwhile) - aborting the \
+              transaction %s it! VanillaBP progresses the workflow after the commit, so a task \
+              which no longer exists cannot be reached any more."""
+              .formatted(taskId, operationDescription));
+    }
+
+  }
+
+  /**
+   * Whether an execution of the given workflow waits for the message. Phase one asks
+   * this before it schedules a correlation. Phase two asks again before it correlates,
+   * because a subscription may be gone at dispatch time (at-least-once).
+   * <p>
+   * The subscription carries the SCOPED message name, like the correlation itself. A query
+   * for the plain name would find nothing wherever a workflow module prefixes its
+   * identifiers. A correlation id is on purpose NOT part of the question. It selects among
+   * several waiting executions. That is the correlation's job, not this check's.
+   *
+   * @param workflowModuleId The workflow module ID
+   * @param messageName The message name as the application knows it
+   * @param businessKey The workflow aggregate's ID
+   * @return Whether at least one execution waits for that message
+   */
+  private boolean messageSubscriptionWaiting(
+      final String workflowModuleId,
+      final String messageName,
+      final String businessKey) {
+
+    return !waitingExecutions(workflowModuleId, messageName, businessKey).isEmpty();
+
+  }
+
+  /**
+   * The executions waiting for a message of this workflow aggregate.
+   *
+   * @param workflowModuleId The workflow module ID
+   * @param messageName The BPMN message name
+   * @param businessKey The workflow aggregate's ID
+   * @return The waiting executions (never <code>null</code>)
+   */
+  private java.util.List<org.operaton.bpm.engine.runtime.Execution> waitingExecutions(
+      final String workflowModuleId,
+      final String messageName,
+      final String businessKey) {
+
+    var query = runtimeService
+        .createExecutionQuery()
+        .messageEventSubscriptionName(scopedIdentifier(workflowModuleId, messageName))
+        .processInstanceBusinessKey(businessKey);
+    final var tenantId = tenantIdOf(workflowModuleId);
+    query = tenantId != null
+        ? query.tenantIdIn(tenantId)
+        : query.withoutTenantId();
+    return query.list();
+
+  }
+
+  private org.operaton.bpm.engine.runtime.MessageCorrelationBuilder messageCorrelation(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final String messageName,
+      final String businessKey,
+      final String correlationId) {
+
+    var correlation = runtimeService
+        .createMessageCorrelation(scopedIdentifier(workflowModuleId, messageName))
+        .processInstanceBusinessKey(businessKey);
+    final var correlationTenantId = tenantIdOf(workflowModuleId);
+    correlation = correlationTenantId != null
+        ? correlation.tenantId(correlationTenantId)
+        : correlation.withoutTenantId();
+    if (correlationId != null) {
+      // V1 convention. The local variable '<bpmnProcessId>-<messageName>' at the
+      // subscription's execution holds the expected correlation id
+      correlation = correlation.localVariableEquals(
+          correlationIdVariableName(bpmnProcessId, messageName),
+          correlationId);
+    }
+    return correlation;
+
+  }
+
+  /**
+   * A signal reaches every subscription of the workflow module's scope. That is the
+   * tenant the module is deployed into, or no tenant where the module prefixes its
+   * identifiers. No variables travel, although every other sync point writes them. A
+   * broadcast reaches workflows of OTHER aggregates. Writing the values of the sending
+   * one into them would state something false. Camunda 8 behaves the same way, for the
+   * same reason. The difference to the other sync points is the broadcast, not the engine.
+   */
+  private void broadcastSignal(
+      final String workflowModuleId,
+      final String signalName) {
+
+    var signal = runtimeService
+        .createSignalEvent(scopedIdentifier(workflowModuleId, signalName));
+    final var signalTenantId = tenantIdOf(workflowModuleId);
+    signal = signalTenantId != null
+        ? signal.tenantId(signalTenantId)
+        : signal.withoutTenantId();
+    signal.send();
+
+  }
+
+  /**
+   * The phase-one question of a correlation: does an execution wait for this message? And
+   * if the application named a correlation id, does one of those executions expect exactly
+   * that id? The correlation itself matches on a local variable
+   * ({@code localVariableEquals}). So a wrong id fails where the application passed it, and
+   * not after the commit.
+   *
+   * @param workflowModuleId The workflow module ID
+   * @param bpmnProcessId The BPMN process ID (names the correlation-id variable)
+   * @param messageName The BPMN message name
+   * @param businessKey The workflow aggregate's ID
+   * @param correlationId The expected correlation id or <code>null</code>
+   * @return Whether correlating would find a subscription
+   */
+  private boolean subscriptionWaitingFor(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final String messageName,
+      final String businessKey,
+      final String correlationId) {
+
+    return !executionsExpecting(workflowModuleId, bpmnProcessId, messageName, businessKey, correlationId)
+        .isEmpty();
+
+  }
+
+  /**
+   * The executions a correlation would choose from: those which wait for the message. Where
+   * the application named a correlation id, only those which expect exactly that one.
+   *
+   * @param workflowModuleId The workflow module ID
+   * @param bpmnProcessId The BPMN process ID (names the correlation-id variable)
+   * @param messageName The BPMN message name
+   * @param businessKey The workflow aggregate's ID
+   * @param correlationId The expected correlation id or <code>null</code>
+   * @return The executions (never <code>null</code>)
+   */
+  private java.util.List<org.operaton.bpm.engine.runtime.Execution> executionsExpecting(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final String messageName,
+      final String businessKey,
+      final String correlationId) {
+
+    final var waiting = waitingExecutions(workflowModuleId, messageName, businessKey);
+    if (correlationId == null) {
+      return waiting;
+    }
+    final var variableName = correlationIdVariableName(bpmnProcessId, messageName);
+    return waiting
+        .stream()
+        .filter(execution -> correlationId
+            .equals(runtimeService.getVariableLocal(execution.getId(), variableName)))
+        .toList();
+
+  }
+
+  /**
+   * Writes the aggregate's shared values into the workflow (see
+   * {@link #aggregateForOperatorContext}). Then the engine evaluates again what waits
+   * for a change.
+   * <p>
+   * Operaton evaluates conditional events when a variable of their scope changes. So
+   * the write itself is the trigger. It has to happen even for an aggregate which shares
+   * nothing at all. That is why a technical marker variable is written alongside. A
+   * condition then reads the values written here. Without the write nothing would look.
+   *
+   * @param businessKey The aggregate's ID
+   * @param aggregate The workflow aggregate or <code>null</code>
+   * @param taskId The parked execution whose scope receives the values, or
+   *        <code>null</code> for the workflow's global scope and the global scope of
+   *        every called process continuing the aggregate
+   * @param tolerateGoneWorkflow Whether a workflow gone by now is tolerated (phase
+   *        two is at-least-once) instead of failing. It is judged within the scope of
+   *        the call. Otherwise a foreign workflow with the same business key would make
+   *        an ended workflow look present. And a redelivered push would write there
+   *        instead of being skipped
+   */
+  private void pushAggregate(
+      final String businessKey,
+      final A aggregate,
+      final String taskId,
+      final boolean tolerateGoneWorkflow,
+      final String workflowModuleId,
+      final String bpmnProcessId) {
+
+    final java.util.function.Function<String, java.util.Map<String, Object>> variablesFor = processInstanceId -> {
+      final var variables = new java.util.LinkedHashMap<String, Object>(
+          sharedValuesOfTheInstance(aggregate, processInstanceId, workflowModuleId, bpmnProcessId));
+      if (variables.isEmpty()) {
+        // an aggregate which shares nothing at all (@NoSyncWithBPMS on the class). Without
+        // a variable event the engine would not look at its conditional events. So a
+        // technical marker is written instead
+        variables.put(AGGREGATE_CHANGED_MARKER, System.currentTimeMillis());
+      }
+      return variables;
+    };
+
+    if (taskId != null) {
+      // check BEFORE writing (rollback-only pitfall, see signalTask)
+      final var execution = runtimeService
+          .createExecutionQuery()
+          .executionId(taskId)
+          .singleResult();
+      if (execution == null) {
+        if (!tolerateGoneWorkflow) {
+          throw new io.vanillabp.spi.process.TaskNotFoundException(
+              ("The task '%s' of the workflow of aggregate '%s' is not active in Operaton (adapter "
+                  + "'%s')! Either the task was completed meanwhile or the id is not the one reported "
+                  + "to the @TaskId parameter.")
+                  .formatted(taskId, businessKey, adapterId));
+        }
+        log.warn(
+            "Operaton[{}]: task '{}' of workflow aggregate '{}' is gone - skipping the redelivered "
+                + "phase-two push of the aggregate",
+            adapterId,
+            taskId,
+            businessKey);
+        return;
+      }
+      // no scope comparison on this path. That is a decision, not an omission. The
+      // caller names a task it was told about through '@TaskId'. An Operaton execution
+      // id is a UUID the engine hands out per execution. So it addresses exactly one
+      // execution of one instance. Camunda 8 is different: there a job or user-task KEY
+      // ignores the tenant. So a second adapter id on the same cluster can be asked
+      // about a task of its own. The branch below cannot rely on the business key.
+      // That is why only it needs the filter.
+      //
+      // the scope the task RUNS IN: the process, an embedded subprocess, or the one
+      // iteration of a multi-instance embedded subprocess it belongs to. Writing on
+      // the task's own execution would reach a boundary conditional event and nothing
+      // else. But an event subprocess with a conditional start event listens on the
+      // scope
+      runtimeService
+          .setVariablesLocal(
+              flowScopeExecutionIdOf(execution.getProcessInstanceId(), taskId),
+              variablesFor.apply(execution.getProcessInstanceId()));
+      return;
+    }
+
+    // narrowed to the scope of the CALL. A business key is the workflow-aggregate id.
+    // It is unique per aggregate type, but not across an engine. So the key alone also
+    // matches a workflow of another workflow module, of another adapter id during a
+    // migration, or of another application which shares the database. Writing there
+    // would not only report the wrong thing. It would MOVE THAT WORKFLOW ON, because a
+    // variable write makes Operaton evaluate conditional events again. And this method
+    // writes even for an aggregate which shares nothing (the marker above)
+    final var candidates = within(
+        runtimeService.createProcessInstanceQuery().processInstanceBusinessKey(businessKey),
+        io.vanillabp.integration.adapter.spi.WorkflowScope.of(workflowModuleId, bpmnProcessId))
+        .list();
+    if (candidates.size() > 1) {
+      // one business key is one aggregate. So two instances of one scope with that key
+      // break an assumption. This is not an ambiguity to resolve. It used to arrive as a
+      // 'ProcessEngineException' from singleResult(), which named neither the aggregate nor
+      // the instances
+      throw new IllegalStateException(
+          ("Operaton[%s]: aggregate '%s' of '%s/%s' is carried by %d workflows at once (%s)! A "
+              + "workflow-aggregate id belongs to ONE workflow, so its changed values cannot be "
+              + "pushed - check whether something started a second workflow with the same "
+              + "aggregate.")
+              .formatted(
+                  adapterId,
+                  businessKey,
+                  workflowModuleId,
+                  bpmnProcessId,
+                  candidates.size(),
+                  candidates
+                      .stream()
+                      .map(org.operaton.bpm.engine.runtime.ProcessInstance::getId)
+                      .collect(java.util.stream.Collectors.joining(", "))));
+    }
+    final var processInstance = candidates.isEmpty()
+        ? null
+        : candidates.get(0);
+    if (processInstance == null) {
+      if (!tolerateGoneWorkflow) {
+        throw new io.vanillabp.spi.process.WorkflowNotFoundException(
+            ("The workflow of aggregate '%s' is not active in Operaton (adapter '%s') - its changed "
+                + "aggregate cannot be pushed!")
+                .formatted(businessKey, adapterId));
+      }
+      log.warn(
+          "Operaton[{}]: the workflow of aggregate '{}' is gone - skipping the redelivered phase-two "
+              + "push of the aggregate",
+          adapterId,
+          businessKey);
+      return;
+    }
+    runtimeService.setVariables(processInstance.getId(), variablesFor.apply(processInstance.getId()));
+    // a called process is a process instance of its own in Operaton, with variables of its
+    // own. So what waits in it never sees the values written above. Every called instance
+    // which continues this aggregate gets them as well, in the format of its own process.
+    // See decision 45 in the Camunda 7 adapter's DECISIONS.md
+    calledInstancesContinuingTheAggregate(processInstance.getId(), businessKey)
+        .forEach(calledInstanceId -> runtimeService
+            .setVariables(calledInstanceId, variablesFor.apply(calledInstanceId)));
+
+  }
+
+  /**
+   * The instances of called processes below a process instance which continue its workflow
+   * aggregate, at any depth.
+   * <p>
+   * A called process continues the aggregate where it carries the same business key. The
+   * deployment passes the key on exactly where caller and called process share the aggregate.
+   * The walk stops at a called process with an aggregate of its own. What it calls belongs to
+   * that aggregate, not to this one.
+   *
+   * @param processInstanceId The instance at the top
+   * @param businessKey The aggregate's ID
+   * @return The called instances, the ones closer to the top first
+   */
+  private java.util.List<String> calledInstancesContinuingTheAggregate(
+      final String processInstanceId,
+      final String businessKey) {
+
+    final var found = new java.util.ArrayList<String>();
+    var callers = java.util.List.of(processInstanceId);
+    while (!callers.isEmpty()) {
+      final var called = callers
+          .stream()
+          .flatMap(caller -> runtimeService
+              .createProcessInstanceQuery()
+              .superProcessInstanceId(caller)
+              .list()
+              .stream())
+          .filter(instance -> businessKey.equals(instance.getBusinessKey()))
+          .map(ProcessInstance::getId)
+          .toList();
+      found.addAll(called);
+      callers = called;
+    }
+    return found;
+
+  }
+
+  /**
+   * The execution of the scope the task with the given ID RUNS IN: the process
+   * instance, an embedded subprocess, or the one iteration of a multi-instance
+   * embedded subprocess it belongs to.
+   * <p>
+   * It is not the task's own context. An activity with boundary events (and every instance
+   * of a multi-instance activity) gets a scope of its own in the engine. Writing there
+   * would serve a boundary conditional event and nothing else. An event subprocess with a
+   * conditional start event listens on the scope AROUND the task. The rest of that scope
+   * reads it, too.
+   * <p>
+   * The walk goes up the execution tree, from the task's execution to the closest SCOPE
+   * execution. It skips the execution of the task's own activity scope, and the technical
+   * wrapper around the instances of a multi-instance activity.
+   *
+   * @param processInstanceId The workflow's process instance
+   * @param taskId The parked execution of the task
+   * @return The execution to write the local variables at (the process instance if
+   *         the task cannot be located)
+   */
+  private String flowScopeExecutionIdOf(
+      final String processInstanceId,
+      final String taskId) {
+
+    final var executions = runtimeService
+        .createExecutionQuery()
+        .processInstanceId(processInstanceId)
+        .list()
+        .stream()
+        .filter(org.operaton.bpm.engine.impl.persistence.entity.ExecutionEntity.class::isInstance)
+        .map(org.operaton.bpm.engine.impl.persistence.entity.ExecutionEntity.class::cast)
+        .collect(
+            java.util.stream.Collectors
+                .toMap(
+                    org.operaton.bpm.engine.impl.persistence.entity.ExecutionEntity::getId,
+                    execution -> execution));
+
+    var current = executions.get(taskId);
+    if (current == null) {
+      return processInstanceId;
+    }
+    final var processDefinitionId = current.getProcessDefinitionId();
+    if (current.isScope() && activityHasAScopeOfItsOwn(processDefinitionId, current.getActivityId())) {
+      // the scope of the task itself. The task runs in the scope around it
+      current = executions.get(current.getParentId());
+    }
+    while (current != null) {
+      if (current.isScope() && !isMultiInstanceBody(current)) {
+        return current.getId();
+      }
+      current = executions.get(current.getParentId());
+    }
+    return processInstanceId;
+
+  }
+
+  /**
+   * Whether the BPMN activity creates a scope of its own in the engine. That is an
+   * activity with boundary events attached, or a multi-instance activity (each of its
+   * instances gets one).
+   *
+   * @param processDefinitionId The definition the workflow runs on
+   * @param activityId The activity to look at
+   * @return Whether the engine gives that activity a scope
+   */
+  private boolean activityHasAScopeOfItsOwn(
+      final String processDefinitionId,
+      final String activityId) {
+
+    if (activityId == null) {
+      return false;
+    }
+    try {
+      final var model = repositoryService.getBpmnModelInstance(processDefinitionId);
+      final var element = model.getModelElementById(activityId);
+      if (element instanceof org.operaton.bpm.model.bpmn.instance.Activity activity) {
+        if (activity.getLoopCharacteristics() != null) {
+          return true;
+        }
+        return model
+            .getModelElementsByType(org.operaton.bpm.model.bpmn.instance.BoundaryEvent.class)
+            .stream()
+            .anyMatch(boundaryEvent -> activityId.equals(boundaryEvent.getAttachedTo().getId()));
+      }
+      return false;
+    } catch (final RuntimeException e) {
+      log
+          .debug(
+              "Operaton[{}]: could not read the model of process definition '{}' - assuming activity '{}' "
+                  + "has no scope of its own",
+              adapterId,
+              processDefinitionId,
+              activityId,
+              e);
+      return false;
+    }
+
+  }
+
+  /**
+   * Whether the execution is the technical wrapper around the instances of a
+   * multi-instance activity. All of them would share its variables. So it is never the
+   * scope a push is meant for.
+   *
+   * @param execution The execution to look at
+   * @return Whether it is a multi-instance body
+   */
+  private boolean isMultiInstanceBody(
+      final org.operaton.bpm.engine.impl.persistence.entity.ExecutionEntity execution) {
+
+    final var activityId = execution.getActivityId();
+    // the engine names it "<activity id>#multiInstanceBody"
+    return (activityId != null) && activityId.endsWith("#"
+        + org.operaton.bpm.engine.ActivityTypes.MULTI_INSTANCE_BODY);
+
+  }
+
+  /**
+   * Reads the aggregate for the values phase two writes into the engine. They are the
+   * operator context of a workflow about to start, and the values the model reads after a
+   * completed task or a correlated message. An operator sees them in Cockpit. So a
+   * persistence which cannot read an aggregate by its ID must not keep the operation from
+   * running.
+   *
+   * @param aggregatePersistence The aggregate's persistence
+   * @param workflowAggregateId The aggregate's ID
+   * @return The aggregate or <code>null</code> if it cannot be read
+   */
+  private A aggregateForOperatorContext(
+      final AggregatePersistenceAware<A> aggregatePersistence,
+      final Object workflowAggregateId) {
+
+    if (aggregatePersistence == null) {
+      return null;
+    }
+    try {
+      return aggregatePersistence.loadById(workflowAggregateId);
+    } catch (final RuntimeException e) {
+      log.warn(
+          "Operaton[{}]: could not read the aggregate '{}' to write the values it shares with "
+              + "the workflow - going on without them",
+          adapterId,
+          workflowAggregateId,
+          e);
+      return null;
+    }
+
+  }
+
+
+  @Override
+  public java.util.List<io.vanillabp.spi.process.ProcessDefinition> getProcessDefinitions(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final AggregatePersistenceAware<A> aggregatePersistence,
+      final Object workflowAggregateId,
+      final String historyContext) {
+
+    return viewer.getProcessDefinitions(
+        workflowModuleId,
+        scopedProcessId(workflowModuleId, bpmnProcessId),
+        tenantIdOf(workflowModuleId),
+        workflowAggregateId,
+        historyContext);
+
+  }
+
+  @Override
+  public java.io.InputStream getBpmnXml(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final String processDefinitionId) {
+
+    return viewer.getBpmnXml(processDefinitionId);
+
+  }
+
+  @Override
+  public io.vanillabp.spi.process.WorkflowHistory getWorkflowHistory(
+      final String workflowModuleId,
+      final String bpmnProcessId,
+      final AggregatePersistenceAware<A> aggregatePersistence,
+      final Object workflowAggregateId,
+      final String historyContext) {
+
+    return viewer.getWorkflowHistory(
+        workflowModuleId,
+        scopedProcessId(workflowModuleId, bpmnProcessId),
+        tenantIdOf(workflowModuleId),
+        workflowAggregateId,
+        historyContext);
+
+  }
+
+}

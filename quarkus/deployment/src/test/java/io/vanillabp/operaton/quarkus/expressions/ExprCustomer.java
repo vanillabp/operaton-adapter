@@ -1,0 +1,31 @@
+package io.vanillabp.operaton.quarkus.expressions;
+
+/**
+ * The customer of an order. It has a name and a flag, and no address, on purpose. An
+ * expression which reads an address is the case where a path stops at a name the type does
+ * not have.
+ */
+public class ExprCustomer {
+
+  private final boolean vip;
+
+  ExprCustomer(
+      final boolean vip) {
+
+    this.vip = vip;
+
+  }
+
+  public String getName() {
+
+    return "a customer";
+
+  }
+
+  public boolean isVip() {
+
+    return vip;
+
+  }
+
+}

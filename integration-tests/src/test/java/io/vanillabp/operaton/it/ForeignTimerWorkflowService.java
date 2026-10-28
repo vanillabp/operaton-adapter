@@ -1,0 +1,82 @@
+package io.vanillabp.operaton.it;
+
+import java.util.UUID;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import io.vanillabp.spi.process.ProcessService;
+import io.vanillabp.spi.service.BpmnProcess;
+import io.vanillabp.spi.service.BpmsStartTrigger;
+import io.vanillabp.spi.service.WorkflowService;
+import io.vanillabp.spi.service.WorkflowStartedByBpms;
+import io.vanillabp.spi.service.WorkflowTask;
+
+/**
+ * The workflow service of the timer-started process of the foreign-start integration test.
+ * It starts the workflow itself. It also names a workflow which reached the application
+ * without VanillaBP starting it.
+ */
+@Service
+@WorkflowService(
+    workflowAggregateClass = ForeignTimerAggregate.class,
+    bpmnProcess = @BpmnProcess(bpmnProcessId = "ForeignTimerProcess"))
+public class ForeignTimerWorkflowService {
+
+  private final ProcessService<ForeignTimerAggregate> processService;
+
+  public ForeignTimerWorkflowService(
+      final ProcessService<ForeignTimerAggregate> processService) {
+
+    this.processService = processService;
+
+  }
+
+  /**
+   * Starts the workflow the way an application does it, although the process is started
+   * by a timer as well. VanillaBP writes the aggregate in this transaction. The instance is
+   * started after the commit, through the phase-two outbox, and the business key it gets is
+   * the aggregate's id.
+   *
+   * @param id The id of the workflow aggregate to start
+   */
+  @Transactional
+  public void startTheWorkflow(
+      final String id) {
+
+    final var aggregate = new ForeignTimerAggregate();
+    aggregate.setId(id);
+    aggregate.setStartedBy("the application");
+    processService.startWorkflow(aggregate);
+
+  }
+
+  /**
+   * Names a workflow which nobody started through VanillaBP. The timer of the engine does
+   * that here, and so does anybody who starts this process without a business key.
+   *
+   * @param trigger Which start event fired
+   * @return The workflow aggregate of the started workflow
+   */
+  @WorkflowStartedByBpms
+  public ForeignTimerAggregate nameTheStartedWorkflow(
+      final BpmsStartTrigger trigger) {
+
+    final var aggregate = new ForeignTimerAggregate();
+    aggregate.setId("timer-"
+        + UUID.randomUUID());
+    aggregate.setStartedBy("the engine at "
+        + trigger.startEventId());
+    return aggregate;
+
+  }
+
+  @WorkflowTask(taskDefinition = "recordForeignTimerStart")
+  public void recordForeignTimerStart(
+      final ForeignTimerAggregate aggregate) {
+
+    aggregate.setProcessedBy("recordForeignTimerStart");
+
+  }
+
+}

@@ -1,0 +1,28 @@
+package io.vanillabp.operaton.quarkus.sample;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.Setter;
+
+/**
+ * JPA workflow aggregate. It is persisted in the same H2 database, and in the same JTA
+ * transaction, as the embedded Operaton engine. The generated ID, which is not a string,
+ * is used as the Camunda business key of the started workflow.
+ */
+@Entity
+@Table(name = "C7_TEST_AGGREGATE")
+@Getter
+@Setter
+public class TestAggregate {
+
+  @Id
+  @GeneratedValue(strategy = GenerationType.IDENTITY)
+  private Long id;
+
+  private String content;
+
+}

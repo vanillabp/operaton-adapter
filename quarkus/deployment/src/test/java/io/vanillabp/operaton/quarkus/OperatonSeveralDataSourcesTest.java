@@ -1,0 +1,50 @@
+package io.vanillabp.operaton.quarkus;
+
+import org.jboss.shrinkwrap.api.ShrinkWrap;
+import org.jboss.shrinkwrap.api.spec.JavaArchive;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import io.quarkus.test.QuarkusExtensionTest;
+import io.vanillabp.integration.test.utils.SuppressOutputExtension;
+import io.vanillabp.operaton.quarkus.sample.TestAggregate;
+import io.vanillabp.operaton.quarkus.sample.TestAggregatePersistence;
+import io.vanillabp.operaton.quarkus.sample.TestWorkflowService;
+
+/**
+ * An application which declares more than one datasource, and an adapter id which names
+ * none of them. Operaton runs embedded and needs a database. If the adapter guessed which
+ * one is meant, the alphabet would decide where the engine's tables go. So the boot stops
+ * and says how to name one.
+ */
+@ExtendWith(SuppressOutputExtension.class)
+public class OperatonSeveralDataSourcesTest {
+
+  @RegisterExtension
+  static final QuarkusExtensionTest extensionTest = new QuarkusExtensionTest()
+      .setArchiveProducer(() -> ShrinkWrap
+          .create(JavaArchive.class)
+          .addClass(TestAggregate.class)
+          .addClass(TestAggregatePersistence.class)
+          .addClass(TestWorkflowService.class)
+          .addAsResource("several-datasources/application.yaml", "application.yaml")
+          .addAsResource("c7-test/processes/test-process.bpmn", "c7-test/processes/test-process.bpmn")
+          .addAsResource("workflow-module-descriptor/workflow-module", "META-INF/workflow-module"))
+      .assertException(throwable -> {
+        final var message = OperatonBootFailure.messagesOf(throwable);
+        Assertions.assertTrue(
+            message.contains("declares SEVERAL datasources"),
+            () -> "expected the guiding message about several datasources but got: "
+                + message);
+        Assertions.assertTrue(message.contains("vanillabp.adapters.c7.data-source-name"), () -> message);
+        Assertions.assertTrue(message.contains("table-prefix"), () -> message);
+      });
+
+  @Test
+  public void anAdapterWithoutADataSourceNameFailsTheBoot() {
+    // the assertion happens on the startup exception (assertException above)
+  }
+
+}

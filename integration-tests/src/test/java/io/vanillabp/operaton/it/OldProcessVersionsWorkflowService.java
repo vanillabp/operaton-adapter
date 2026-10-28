@@ -1,0 +1,78 @@
+package io.vanillabp.operaton.it;
+
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Service;
+
+import io.vanillabp.spi.process.ProcessService;
+import io.vanillabp.spi.service.BpmnProcess;
+import io.vanillabp.spi.service.TaskId;
+import io.vanillabp.spi.service.WorkflowService;
+import io.vanillabp.spi.service.WorkflowTask;
+
+/**
+ * The workflow service of the old-process-versions test. Its three methods are the three
+ * states an application can be in towards the versions its BPMS holds:
+ * <ul>
+ * <li>{@code keptInBothVersions} serves every version. The task survived into the deployed
+ * model.</li>
+ * <li>{@code droppedInVersionTwo} serves version 1 only. The task was dropped from the model,
+ * and the method stays for the workflows which still run on that version. It matches no
+ * task of the deployed model, and that must not fail the start.</li>
+ * <li>{@code servedForAnUnknownVersion} names a version which this engine does not hold. So it
+ * never runs, and the task it would serve has no method in version 1.</li>
+ * </ul>
+ * <p>
+ * Version 1 is deployed by the generation before this one,
+ * {@link OldProcessVersionsBeforeWorkflowService}, which still serves every task of it. This class
+ * cannot deploy version 1 itself. A start refuses the version it deploys when a task of
+ * that version has no method for it. Here 'servedForAnUnknownVersion' has none.
+ */
+@Service
+@Profile("!"
+    + OldProcessVersionsBeforeWorkflowService.PROFILE)
+@WorkflowService(
+    workflowAggregateClass = OldProcessVersionsAggregate.class,
+    bpmnProcess = @BpmnProcess(bpmnProcessId = "OldProcessVersionsProcess"))
+public class OldProcessVersionsWorkflowService {
+
+  private final ProcessService<OldProcessVersionsAggregate> processService;
+
+  public OldProcessVersionsWorkflowService(
+      final ProcessService<OldProcessVersionsAggregate> processService) {
+
+    this.processService = processService;
+
+  }
+
+  public OldProcessVersionsAggregate startWorkflow() {
+
+    return processService.startWorkflow(new OldProcessVersionsAggregate());
+
+  }
+
+  @WorkflowTask(taskDefinition = "keptInBothVersions")
+  public void keptInBothVersions(
+      final OldProcessVersionsAggregate aggregate) {
+
+    aggregate.setServedBy("kept");
+
+  }
+
+  @WorkflowTask(taskDefinition = "droppedInVersionTwo", version = "1")
+  public void droppedInVersionTwo(
+      final OldProcessVersionsAggregate aggregate,
+      @TaskId final String taskId) {
+
+    aggregate.setOpenTaskId(taskId);
+
+  }
+
+  @WorkflowTask(taskDefinition = "servedForAnUnknownVersion", version = "0")
+  public void servedForAnUnknownVersion(
+      final OldProcessVersionsAggregate aggregate) {
+
+    aggregate.setServedBy("never");
+
+  }
+
+}

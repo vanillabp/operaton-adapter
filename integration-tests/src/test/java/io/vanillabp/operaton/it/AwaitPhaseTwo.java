@@ -1,0 +1,100 @@
+package io.vanillabp.operaton.it;
+
+import static org.junit.jupiter.api.Assertions.fail;
+
+import java.util.concurrent.Callable;
+import java.util.function.BooleanSupplier;
+
+/**
+ * An operation which moves a workflow forward runs AFTER the transaction of the caller has
+ * committed. The phase-two outbox dispatches it (see decision 2 in the Camunda 7 adapter's
+ * DECISIONS.md). So a test which called VanillaBP has to wait for the engine to catch up.
+ * It cannot read the state of the engine in the next line.
+ * <p>
+ * The waiting is kept here on purpose, and not hidden in a base class. A test says where it
+ * waits, so what is asynchronous stays visible.
+ */
+final class AwaitPhaseTwo {
+
+  private static final long TIMEOUT_MS = 20_000;
+
+  private static final long INTERVAL_MS = 50;
+
+  private AwaitPhaseTwo() {
+  }
+
+  /**
+   * Waits until a condition holds.
+   *
+   * @param condition What has to become true
+   * @param description What is waited for (part of the failure message)
+   */
+  static void until(
+      final BooleanSupplier condition,
+      final String description) {
+
+    final var deadline = System.currentTimeMillis() + TIMEOUT_MS;
+    while (!condition.getAsBoolean()) {
+      if (System.currentTimeMillis() >= deadline) {
+        fail("phase two did not happen within "
+            + TIMEOUT_MS
+            + "ms: "
+            + description);
+      }
+      sleep();
+    }
+
+  }
+
+  /**
+   * Waits until a value is there. That is, until the call neither returns <code>null</code>
+   * nor throws.
+   *
+   * @param <T> The value's type
+   * @param supplier What is asked repeatedly
+   * @param description What is waited for (part of the failure message)
+   * @return The value
+   */
+  static <T> T untilAvailable(
+      final Callable<T> supplier,
+      final String description) {
+
+    final var deadline = System.currentTimeMillis() + TIMEOUT_MS;
+    while (true) {
+      try {
+        final var value = supplier.call();
+        if (value != null) {
+          return value;
+        }
+      } catch (final Exception e) {
+        if (System.currentTimeMillis() >= deadline) {
+          throw new AssertionError(
+              "phase two did not happen within "
+                  + TIMEOUT_MS
+                  + "ms: "
+                  + description, e);
+        }
+      }
+      if (System.currentTimeMillis() >= deadline) {
+        return fail("phase two did not happen within "
+            + TIMEOUT_MS
+            + "ms: "
+            + description);
+      }
+      sleep();
+    }
+
+  }
+
+  private static void sleep() {
+
+    try {
+      Thread.sleep(INTERVAL_MS);
+    } catch (final InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("interrupted while waiting for phase two", e);
+    }
+
+  }
+
+}

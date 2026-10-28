@@ -1,0 +1,37 @@
+package io.vanillabp.operaton.it;
+
+import org.springframework.stereotype.Service;
+
+import io.vanillabp.spi.process.ProcessService;
+import io.vanillabp.spi.service.BpmnProcess;
+import io.vanillabp.spi.service.WorkflowService;
+
+/**
+ * Starts <code>ExprPlacements</code>. The process runs a chosen subset through the other
+ * places where an Operaton model puts an expression. The process has no workflow task of
+ * its own. All it does is decide, wait or iterate. So nothing has to be wired, and a
+ * failing expression is the only thing that can go wrong.
+ */
+@Service
+@WorkflowService(
+    workflowAggregateClass = ExprPlacementsAggregate.class,
+    bpmnProcess = @BpmnProcess(bpmnProcessId = "ExprPlacements"))
+public class ExprPlacementsWorkflowService {
+
+  private final ProcessService<ExprPlacementsAggregate> processService;
+
+  public ExprPlacementsWorkflowService(
+      final ProcessService<ExprPlacementsAggregate> processService) {
+
+    this.processService = processService;
+
+  }
+
+  public ExprPlacementsAggregate start(
+      final ExprPlacementsAggregate aggregate) {
+
+    return processService.startWorkflow(aggregate);
+
+  }
+
+}

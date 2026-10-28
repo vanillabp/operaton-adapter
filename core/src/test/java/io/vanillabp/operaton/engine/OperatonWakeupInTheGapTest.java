@@ -1,0 +1,265 @@
+package io.vanillabp.operaton.engine;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.operaton.bpm.engine.ProcessEngine;
+import org.operaton.bpm.engine.impl.cfg.ProcessEngineConfigurationImpl;
+import org.operaton.bpm.engine.impl.cfg.StandaloneProcessEngineConfiguration;
+import org.operaton.bpm.engine.impl.jobexecutor.AcquiredJobs;
+import org.operaton.bpm.engine.impl.jobexecutor.JobAcquisitionContext;
+import org.operaton.bpm.engine.impl.jobexecutor.JobAcquisitionStrategy;
+import org.operaton.bpm.engine.impl.jobexecutor.JobExecutor;
+import org.operaton.bpm.model.bpmn.Bpmn;
+import org.operaton.bpm.model.bpmn.BpmnModelInstance;
+
+import io.vanillabp.integration.test.utils.SuppressOutputExtension;
+
+/**
+ * The window in which a wake-up used to disappear, and what it cost here.
+ * <p>
+ * The engine's acquisition loop copies its "a job was added" flag into the cycle it just
+ * ran. Then it asks the strategy how long to wait, and clears the flag afterwards. Camunda
+ * pays one idle interval for a wake-up which lands in that window. This adapter asks the
+ * database for the next due date inside that same window. The wait it comes back with lasts
+ * until that due date, or a year where no job is due at all. So the same lost wake-up is no
+ * longer a late cycle. It becomes a job which never runs.
+ * <p>
+ * Both tests depend on state, not on a clock. The first makes the job get written from
+ * inside the window itself, so there is nothing to time. The second asks the strategy what
+ * it decides for a cycle somebody woke. That question has one answer.
+ */
+@ExtendWith(SuppressOutputExtension.class)
+@SuppressOutputExtension.SuppressBackgroundOutput
+public class OperatonWakeupInTheGapTest {
+
+  /**
+   * How long a test waits for a workflow which should have run. It is generous, because a
+   * busy build machine may be slow. The test fails because of the year-long sleep, not
+   * because of a second of delay.
+   */
+  private static final long PATIENCE = 20000;
+
+  private static final String WORKER = "AWorker";
+
+  private ProcessEngine processEngine;
+
+  private JobExecutor jobExecutor;
+
+  @AfterEach
+  public void closeTheEngine() {
+
+    if (jobExecutor != null) {
+      jobExecutor.shutdown();
+    }
+    if (processEngine != null) {
+      processEngine.close();
+    }
+
+  }
+
+  /**
+   * What the job of the workflow below does, and the only thing this test watches. It is a
+   * bean of the engine, not a question the test asks. Every question asked of this engine
+   * is an engine command, and a committed engine command wakes the acquisition. So a test
+   * polling the engine would wake the sleep it is measuring.
+   */
+  public static final class TheJobRan {
+
+    private final CountDownLatch ran = new CountDownLatch(1);
+
+    public boolean report() {
+
+      ran.countDown();
+      return true;
+
+    }
+
+  }
+
+  private final TheJobRan theJobRan = new TheJobRan();
+
+  /**
+   * A workflow with one job to do, due the moment it is started.
+   */
+  private static BpmnModelInstance aWorkflowWithSomethingToDoNow() {
+
+    return Bpmn
+        .createExecutableProcess(WORKER)
+        .startEvent()
+        .serviceTask()
+        .operatonAsyncBefore()
+        .operatonExpression("${theJobRan.report()}")
+        .endEvent()
+        .done();
+
+  }
+
+  /**
+   * An acquisition which lets the test act exactly once, inside the window. That is after
+   * the strategy asked the database for the next due date, and before the loop clears the
+   * flag a wake-up sets. From there on, the loop does what production does.
+   */
+  private static final class AcquisitionOpeningTheWindow extends OperatonSleepingAcquisition {
+
+    private final AtomicBoolean windowStillToUse = new AtomicBoolean(true);
+
+    private final Runnable whileTheWindowIsOpen;
+
+    private AcquisitionOpeningTheWindow(
+        final String adapterId,
+        final JobExecutor jobExecutor,
+        final Runnable whileTheWindowIsOpen) {
+
+      super(adapterId, jobExecutor);
+      this.whileTheWindowIsOpen = whileTheWindowIsOpen;
+
+    }
+
+    @Override
+    protected void configureNextAcquisitionCycle(
+        final JobAcquisitionContext acquisitionContext,
+        final JobAcquisitionStrategy acquisitionStrategy) {
+
+      super.configureNextAcquisitionCycle(acquisitionContext, acquisitionStrategy);
+      if (windowStillToUse.compareAndSet(true, false)) {
+        whileTheWindowIsOpen.run();
+      }
+
+    }
+
+  }
+
+  /**
+   * The executor of such an acquisition. The engine creates its loop while it initializes,
+   * and keeps no factory for it. That is why the adapter's own executor subclasses it as
+   * well.
+   */
+  private static final class ExecutorOpeningTheWindow extends OperatonSleepingJobExecutor {
+
+    private final Runnable whileTheWindowIsOpen;
+
+    private ExecutorOpeningTheWindow(
+        final String adapterId,
+        final Runnable whileTheWindowIsOpen) {
+
+      super(adapterId);
+      this.whileTheWindowIsOpen = whileTheWindowIsOpen;
+
+    }
+
+    @Override
+    protected void ensureInitialization() {
+
+      super.ensureInitialization();
+      acquireJobsRunnable = new AcquisitionOpeningTheWindow(
+          "c7-gap", this, whileTheWindowIsOpen);
+
+    }
+
+  }
+
+  /**
+   * Starts the workflow from a thread of its own and waits for its commit. So when this
+   * returns, the job is in the database and the wake-up has been sent. It is called from
+   * the acquisition thread, which must not start the workflow itself. A commit of the
+   * acquisition thread is not a wake-up, on purpose (see
+   * {@link OperatonWakeupAfterCommit}).
+   */
+  private void aJobIsWrittenByAnotherThread() {
+
+    final var writer = new Thread(
+        () -> processEngine
+            .getRuntimeService()
+            .startProcessInstanceByKey(WORKER), "writes-a-job-into-the-window");
+    writer.start();
+    try {
+      writer.join();
+    } catch (final InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+
+  }
+
+  @Test
+  @DisplayName("A job written while the next wait is being decided still runs")
+  public void aJobWrittenWhileTheWaitIsBeingDecidedStillRuns() throws Exception {
+
+    final var properties = new OperatonEngineProperties();
+    properties.setSleepUntilSomethingIsDue(true);
+
+    final var configuration = new StandaloneProcessEngineConfiguration();
+    configuration.setProcessEngineName("c7-gap");
+    configuration.setJdbcUrl("jdbc:h2:mem:c7-gap;DB_CLOSE_DELAY=-1");
+    configuration.setDatabaseSchemaUpdate("create-drop");
+    configuration.setHistoryTimeToLive("P180D");
+    configuration.setJobExecutorActivate(false);
+    configuration.setBeans(Map.of("theJobRan", theJobRan));
+    configuration.setJobExecutor(new ExecutorOpeningTheWindow("c7-gap", this::aJobIsWrittenByAnotherThread));
+    OperatonJobExecutorSleep.applyTo("c7-gap", configuration, properties);
+
+    processEngine = configuration.buildProcessEngine();
+    jobExecutor = ((ProcessEngineConfigurationImpl) processEngine.getProcessEngineConfiguration())
+        .getJobExecutor();
+    // every wait this loop could decide on is turned up beyond the patience below, the
+    // engine's own backoff included. So the test does not care which of them was chosen.
+    // Any wait at all is a job which does not run
+    jobExecutor.setWaitTimeInMillis((int) (PATIENCE * 10));
+    jobExecutor.setMaxWait(PATIENCE * 10);
+    processEngine
+        .getRepositoryService()
+        .createDeployment()
+        .addModelInstance("worker.bpmn", aWorkflowWithSomethingToDoNow())
+        .deploy();
+
+    // the first cycle finds an engine without a single job. So it decides on the wait with
+    // no end in sight, and the workflow is started inside that decision
+    jobExecutor.start();
+
+    assertTrue(
+        theJobRan.ran.await(PATIENCE, TimeUnit.MILLISECONDS),
+        "the wake-up of the job written inside the window was lost, so the acquisition kept sleeping");
+
+  }
+
+  @Test
+  @DisplayName("A cycle somebody woke keeps the engine's own timing, not a sleep")
+  public void aCycleSomebodyWokeKeepsTheEnginesOwnTiming() {
+
+    final var executor = new OperatonSleepingJobExecutor("c7-gap-strategy");
+    final var strategy = new OperatonSleepUntilSomethingIsDue("c7-gap-strategy", executor);
+    final var context = new JobAcquisitionContext();
+
+    context.setAcquisitionTime(System.currentTimeMillis());
+    // one engine which was asked for jobs and handed out none. That is what a cycle finding
+    // nothing looks like. An untouched context would read as an executor whose queue is
+    // full
+    context.submitAcquiredJobs("an-engine", new AcquiredJobs(3));
+    context.setJobAdded(false);
+    strategy.reconfigure(context);
+
+    assertEquals(
+        TimeUnit.DAYS.toMillis(365),
+        strategy.getWaitTime(),
+        "an engine which found nothing and was not woken has nothing to come back for");
+
+    context.setJobAdded(true);
+    strategy.reconfigure(context);
+
+    assertTrue(
+        strategy.getWaitTime() < TimeUnit.MINUTES.toMillis(1),
+        "a wake-up says a job was written after the acquisition read the database, so the due date "
+            + "this strategy asked for is older than the job");
+
+  }
+
+}

@@ -1,0 +1,368 @@
+package io.vanillabp.operaton.it;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+import javax.sql.DataSource;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.operaton.bpm.engine.RepositoryService;
+import org.operaton.bpm.engine.RuntimeService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import io.vanillabp.integration.spi.PhaseOperation;
+import io.vanillabp.integration.test.utils.CapturedOutput;
+import io.vanillabp.integration.test.utils.SuppressOutputExtension;
+import io.vanillabp.integration.test.utils.delivery.TaskDeliveryLogReader;
+import io.vanillabp.operaton.processservice.OperatonProcessService;
+import io.vanillabp.spi.process.ProcessService;
+
+/**
+ * Integration test of the Operaton adapter against a <b>real embedded engine on H2</b>. The
+ * engine shares the data source and the transaction manager with the JPA aggregate
+ * persistence.
+ * <p>
+ * It proves the three properties of the C7 start:
+ * <ol>
+ *   <li>BPMN resources are deployed with the workflow module ID as the Camunda tenant ID.</li>
+ *   <li>Starting a workflow creates a process instance whose business key equals the
+ *       aggregate ID. The own method of the adapter does it within the transaction. The
+ *       VanillaBP user API does it right after the commit.</li>
+ *   <li>Rolling back the surrounding transaction removes BOTH the aggregate and the process
+ *       instance. The embedded engine guarantees that.</li>
+ * </ol>
+ * The test runs the start directly through
+ * {@link OperatonProcessService#startProcessInstance(String, String, Object)} of the adapter.
+ * It also runs it end to end through the VanillaBP user API
+ * {@link ProcessService#startWorkflow(Object)}.
+ */
+@SpringBootTest(classes = TestApplication.class, properties = {
+    // a database of its own. Otherwise the phase-two outbox of a test class which Spring
+    // keeps cached would dispatch the entries of the next one.
+    "spring.datasource.url=jdbc:h2:mem:c7-start-workflow-it;DB_CLOSE_DELAY=-1"
+})
+@ExtendWith(SuppressOutputExtension.class)
+@SuppressOutputExtension.SuppressBackgroundOutput
+public class OperatonStartWorkflowIT {
+
+  private static final String MODULE_ID = "c7-it";
+
+  private static final String BPMN_PROCESS_ID = "TestProcess";
+
+  @Autowired
+  private RepositoryService repositoryService;
+
+  @Autowired
+  private RuntimeService runtimeService;
+
+  @Autowired
+  private org.operaton.bpm.engine.ProcessEngine processEngine;
+
+  @SuppressWarnings("rawtypes")
+  @Autowired
+  private OperatonProcessService operatonProcessService;
+
+  @Autowired
+  private AggregateRepository aggregateRepository;
+
+  @Autowired
+  private TransactionTemplate transactionTemplate;
+
+  @Autowired
+  private ProcessService<TestAggregate> processService;
+
+  @Autowired
+  private DataSource applicationDataSource;
+
+  @Test
+  @DisplayName("BPMN resources are deployed with the workflow module ID as the Camunda tenant ID")
+  public void deploymentExistsForModuleTenant() {
+
+    final var count = repositoryService
+        .createProcessDefinitionQuery()
+        .processDefinitionKey(BPMN_PROCESS_ID)
+        .tenantIdIn(MODULE_ID)
+        .count();
+
+    assertEquals(1, count, "exactly one process definition deployed for tenant = module id");
+
+  }
+
+  @Test
+  @DisplayName("Starting inside a transaction creates a process instance with business key = aggregate id")
+  public void startInsideTransactionCreatesInstanceWithBusinessKey() {
+
+    final var aggregateId = transactionTemplate.execute(status -> {
+
+      final var aggregate = new TestAggregate();
+      aggregate.setContent("start-test");
+      final var saved = aggregateRepository.save(aggregate);
+
+      operatonProcessService.startProcessInstance(MODULE_ID, BPMN_PROCESS_ID, saved.getId());
+
+      // inside the same transaction the instance exists, with the aggregate id as business
+      // key
+      final var instance = runtimeService
+          .createProcessInstanceQuery()
+          .processInstanceBusinessKey(String.valueOf(saved.getId()))
+          .tenantIdIn(MODULE_ID)
+          .singleResult();
+      assertNotNull(instance, "process instance exists within the starting transaction");
+      assertEquals(String.valueOf(saved.getId()), instance.getBusinessKey());
+
+      return saved.getId();
+
+    });
+
+    assertNotNull(aggregateId);
+
+  }
+
+  @Test
+  @DisplayName("The start reports the tenant of this mode and nothing about a prefix")
+  public void theStartReportsTheTenantOfThisMode(
+      final CapturedOutput output) {
+
+    final var alreadyLogged = output.getAll().length();
+
+    final var aggregateId = transactionTemplate.execute(status -> {
+
+      final var aggregate = new TestAggregate();
+      aggregate.setContent("reported-start");
+      final var saved = aggregateRepository.save(aggregate);
+
+      operatonProcessService.startProcessInstance(MODULE_ID, BPMN_PROCESS_ID, saved.getId());
+
+      return saved.getId();
+
+    });
+
+    final var reported = output.getAll().substring(alreadyLogged);
+    assertTrue(
+        reported
+            .contains(
+                "started workflow '%s' of workflow module '%s' (tenant '%s', business key '%s')"
+                    .formatted(BPMN_PROCESS_ID, MODULE_ID, MODULE_ID, aggregateId)),
+        () -> "'by-adapter' deploys into a tenant named after the workflow module, so the start has "
+            + "to name that tenant and no second process id: "
+            + reported);
+
+  }
+
+  @Test
+  @DisplayName("Rolling back the transaction removes both the aggregate and the process instance")
+  public void rollbackRemovesAggregateAndProcessInstance() {
+
+    final var aggregateIdHolder = new AtomicReference<Long>();
+
+    final var exception = assertThrows(
+        RuntimeException.class,
+        () -> transactionTemplate.execute(status -> {
+
+          final var aggregate = new TestAggregate();
+          aggregate.setContent("rollback-test");
+          final var saved = aggregateRepository.save(aggregate);
+          aggregateIdHolder.set(saved.getId());
+
+          operatonProcessService.startProcessInstance(MODULE_ID, BPMN_PROCESS_ID, saved.getId());
+
+          // the instance is visible inside the transaction before the rollback...
+          assertEquals(
+              1,
+              runtimeService
+                  .createProcessInstanceQuery()
+                  .processInstanceBusinessKey(String.valueOf(saved.getId()))
+                  .count());
+
+          throw new RuntimeException("trigger rollback");
+
+        }));
+    assertEquals("trigger rollback", exception.getMessage());
+
+    final var aggregateId = aggregateIdHolder.get();
+    assertNotNull(aggregateId);
+
+    // ...and after the rollback both the aggregate and the process instance are gone
+    assertFalse(
+        aggregateRepository.findById(aggregateId).isPresent(),
+        "aggregate rolled back with the transaction");
+    assertEquals(
+        0,
+        runtimeService
+            .createProcessInstanceQuery()
+            .processInstanceBusinessKey(String.valueOf(aggregateId))
+            .count(),
+        "process instance rolled back with the transaction");
+
+  }
+
+  /**
+   * The canonical path end to end through the VanillaBP user API. Starting a workflow
+   * through {@link ProcessService#startWorkflow(Object)} schedules the instance. The
+   * instance is created right after the transaction committed. Rolling the transaction back
+   * removes the aggregate, and no instance is created at all.
+   */
+  @Test
+  @DisplayName("processService.startWorkflow creates the instance after the commit (nothing on rollback)")
+  public void startWorkflowViaProcessServiceHappensAfterTheCommit() {
+
+    final var aggregateId = transactionTemplate.execute(status -> {
+      final var aggregate = new TestAggregate();
+      aggregate.setContent("via-process-service");
+      final var saved = processService.startWorkflow(aggregate);
+      assertEquals(
+          0,
+          runtimeService
+              .createProcessInstanceQuery()
+              .processInstanceBusinessKey(String.valueOf(saved.getId()))
+              .tenantIdIn(MODULE_ID)
+              .count(),
+          "the process instance must not exist before the commit");
+      return saved.getId();
+    });
+
+    assertNotNull(aggregateId);
+
+    // after the commit the outbox creates it, with the aggregate id as business key. The
+    // test asks the HISTORY, because the instance may well have ended by then.
+    AwaitPhaseTwo.until(
+        () -> processEngine
+            .getHistoryService()
+            .createHistoricProcessInstanceQuery()
+            .processInstanceBusinessKey(String.valueOf(aggregateId))
+            .tenantIdIn(MODULE_ID)
+            .count() == 1,
+        "the process instance of aggregate "
+            + aggregateId
+            + " was never created");
+
+    // the start left the id of its instance behind. So a later operation on this workflow
+    // need not ask every configured BPMS which of them holds it.
+    final var instanceId = processEngine
+        .getHistoryService()
+        .createHistoricProcessInstanceQuery()
+        .processInstanceBusinessKey(String.valueOf(aggregateId))
+        .tenantIdIn(MODULE_ID)
+        .singleResult()
+        .getId();
+    final var deliveryLog = TaskDeliveryLogReader.of(applicationDataSource);
+    final var startsOfTheAggregate = deliveryLog.workflowStartsOfAggregate(String.valueOf(aggregateId));
+    assertEquals(1, startsOfTheAggregate.size(), () -> "one row about the start: "
+        + startsOfTheAggregate);
+    assertEquals(instanceId, startsOfTheAggregate.get(0).workflowId());
+    assertEquals(BPMN_PROCESS_ID, startsOfTheAggregate.get(0).bpmnProcessId());
+    assertEquals(versionOfTheDefinitionOf(instanceId), startsOfTheAggregate.get(0).processVersion());
+
+    // rolled-back start removes both the aggregate and the process instance
+    final var rollbackIdHolder = new AtomicReference<Long>();
+    final var exception = assertThrows(
+        RuntimeException.class,
+        () -> transactionTemplate.execute(status -> {
+          final var aggregate = new TestAggregate();
+          aggregate.setContent("via-process-service-rollback");
+          final var saved = processService.startWorkflow(aggregate);
+          rollbackIdHolder.set(saved.getId());
+          throw new RuntimeException("trigger rollback");
+        }));
+    assertEquals("trigger rollback", exception.getMessage());
+
+    final var rolledBackId = rollbackIdHolder.get();
+    assertNotNull(rolledBackId);
+    assertFalse(
+        aggregateRepository.findById(rolledBackId).isPresent(),
+        "aggregate rolled back with the transaction");
+    assertEquals(
+        0,
+        processEngine
+            .getHistoryService()
+            .createHistoricProcessInstanceQuery()
+            .processInstanceBusinessKey(String.valueOf(rolledBackId))
+            .count(),
+        "no process instance was ever created for the rolled-back start");
+    assertTrue(
+        deliveryLog.workflowStartsOfAggregate(String.valueOf(rolledBackId)).isEmpty(),
+        "a start which never happened leaves no row behind");
+
+  }
+
+  /**
+   * Phase two of a start names the instance it created. A start which finds its workflow
+   * running already names nothing. The engine also reports the same start through the
+   * listener on the start event, and both write the same row. So the row alone cannot show
+   * that phase two reported anything. That is why the test listens directly to what phase
+   * two reported.
+   */
+  @Test
+  @DisplayName("Phase two of a start reports the process instance it created, and a repeated one reports nothing")
+  @SuppressWarnings("unchecked")
+  public void phaseTwoOfAStartReportsTheInstanceItCreated() {
+
+    final var aggregateId = transactionTemplate.execute(status -> {
+      final var aggregate = new TestAggregate();
+      aggregate.setContent("reported-instance");
+      return aggregateRepository.save(aggregate).getId();
+    });
+
+    final var reported = new PhaseOperations.ReportedStarts();
+    final var instanceId = transactionTemplate.execute(status -> {
+      PhaseOperations
+          .phaseTwoOfAStart(
+              operatonProcessService, PhaseOperation.START_WORKFLOW, MODULE_ID, BPMN_PROCESS_ID, aggregateId,
+              Map.of(), reported);
+      // the job of the first service task waits for the commit. So the workflow still runs
+      // here, and the second dispatch finds it.
+      PhaseOperations
+          .phaseTwoOfAStart(
+              operatonProcessService, PhaseOperation.START_WORKFLOW, MODULE_ID, BPMN_PROCESS_ID, aggregateId,
+              Map.of(), reported);
+      return runtimeService
+          .createProcessInstanceQuery()
+          .processInstanceBusinessKey(String.valueOf(aggregateId))
+          .tenantIdIn(MODULE_ID)
+          .singleResult()
+          .getProcessInstanceId();
+    });
+
+    // the version comes with the id, in the form in which a task of the same workflow
+    // reports it
+    assertEquals(
+        List.of("%s on version %s".formatted(instanceId, versionOfTheDefinitionOf(instanceId))),
+        reported.reported());
+
+  }
+
+  /**
+   * The version of the definition which a workflow runs on, as the engine counts it.
+   *
+   * @param instanceId The process instance id
+   * @return The version, written as a task of that workflow reports it
+   */
+  private String versionOfTheDefinitionOf(
+      final String instanceId) {
+
+    final var instance = processEngine
+        .getHistoryService()
+        .createHistoricProcessInstanceQuery()
+        .processInstanceId(instanceId)
+        .singleResult();
+    return String
+        .valueOf(
+            processEngine
+                .getRepositoryService()
+                .getProcessDefinition(instance.getProcessDefinitionId())
+                .getVersion());
+
+  }
+
+}

@@ -1,0 +1,121 @@
+package io.vanillabp.operaton.springboot.it;
+
+import org.h2.Driver;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.context.support.StaticApplicationContext;
+import org.springframework.jdbc.datasource.SimpleDriverDataSource;
+
+import io.vanillabp.integration.test.utils.SuppressOutputExtension;
+import io.vanillabp.operaton.engine.OperatonEngineProperties;
+import io.vanillabp.operaton.springboot.engine.OperatonEngineHolder;
+
+/**
+ * Unit test of the job-executor lifecycle of the {@link OperatonEngineHolder}. The engine
+ * is built with the executor INACTIVE (deferred activation). The executor belongs to the
+ * whole engine, while start and stop arrive per workflow module. So the started modules
+ * are counted. The executor stops only when the LAST started module stops. It always
+ * stops on {@code close()}, and {@code close()} may be called twice. The holder is built
+ * on a NAMED datasource bean which the application provides (<code>data-source-name</code>).
+ * So the test also covers how a named bean is resolved. VanillaBP never builds its own
+ * pool, because datasources are the application's job.
+ */
+@ExtendWith(SuppressOutputExtension.class)
+@SuppressOutputExtension.SuppressBackgroundOutput
+public class OperatonEngineHolderTest {
+
+  private static OperatonEngineProperties namedDataSourceProperties(
+      final String dataSourceName) {
+
+    final var properties = new OperatonEngineProperties();
+    properties.setDataSourceName(dataSourceName);
+    return properties;
+
+  }
+
+  @Test
+  @DisplayName("The job executor starts with the first module, stops with the last and on close")
+  public void jobExecutorLifecycleIsReferenceCounted() {
+
+    final var holder = new OperatonEngineHolder(
+        "holder-test", namedDataSourceProperties("holderTestDataSource"), null, null, null, null, null);
+    // Spring lifecycle done by hand. SpringProcessEngineConfiguration needs an
+    // ApplicationContext to resolve Spring beans in scripts and expressions. The named
+    // datasource bean is resolved from it, too
+    try (var applicationContext = new StaticApplicationContext()) {
+      applicationContext
+          .getBeanFactory()
+          .registerSingleton(
+              "holderTestDataSource",
+              new SimpleDriverDataSource(new Driver(), "jdbc:h2:mem:holder-test;DB_CLOSE_DELAY=-1"));
+      holder.setApplicationContext(applicationContext);
+      holder.afterPropertiesSet();
+    }
+    try {
+
+      Assertions.assertTrue(holder.usesSeparateDataSource());
+      Assertions.assertEquals("vanillabp-operaton-holder-test", holder.getProcessEngine().getName());
+
+      // deferred activation: building the engine must not start the executor
+      Assertions.assertFalse(holder.isJobExecutorActive(), "executor must be inactive after engine build");
+
+      // first module starts the engine-global executor
+      holder.startWorkflowProcessing("module-a");
+      Assertions.assertTrue(holder.isJobExecutorActive());
+
+      // a second module keeps it running...
+      holder.startWorkflowProcessing("module-b");
+      holder.stopWorkflowProcessing("module-a");
+      Assertions.assertTrue(
+          holder.isJobExecutorActive(),
+          "stopping the FIRST module must not starve the remaining modules");
+
+      // ...and only the last module's stop shuts it down
+      holder.stopWorkflowProcessing("module-b");
+      Assertions.assertFalse(holder.isJobExecutorActive());
+
+      // it can start again (e.g. for tests or future lifecycle features)
+      holder.startWorkflowProcessing("module-a");
+      Assertions.assertTrue(holder.isJobExecutorActive());
+
+    } finally {
+      holder.close();
+    }
+
+    // close stops the executor unconditionally. That it does so before the engine closes is
+    // not checked here. And it is safe to call more than once
+    Assertions.assertFalse(holder.isJobExecutorActive());
+    holder.close();
+
+  }
+
+  @Test
+  @DisplayName("An unknown data-source-name fails with a guiding message listing the available beans")
+  public void unknownDataSourceNameFailsWithGuidingMessage() {
+
+    final var holder = new OperatonEngineHolder(
+        "holder-test", namedDataSourceProperties("not-there"), null, null, null, null, null);
+    try (var applicationContext = new StaticApplicationContext()) {
+      applicationContext
+          .getBeanFactory()
+          .registerSingleton(
+              "someOtherDataSource",
+              new SimpleDriverDataSource(new Driver(), "jdbc:h2:mem:holder-guide-test;DB_CLOSE_DELAY=-1"));
+      holder.setApplicationContext(applicationContext);
+
+      final var exception = Assertions.assertThrows(
+          IllegalStateException.class,
+          holder::afterPropertiesSet);
+      Assertions.assertTrue(
+          exception.getMessage().contains("references the datasource bean 'not-there'"),
+          "expected the guiding message but got: "
+              + exception.getMessage());
+      Assertions.assertTrue(exception.getMessage().contains("vanillabp.adapters.holder-test.data-source-name"));
+      Assertions.assertTrue(exception.getMessage().contains("someOtherDataSource"));
+    }
+
+  }
+
+}
