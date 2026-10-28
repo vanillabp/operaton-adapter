@@ -71,14 +71,14 @@ JAVA
     cat > Unknown.java <<'JAVA'
 /**
  * A number no entry carries, and the phrase wrapped: see decision 8 in the
- * Camunda 7 adapter's DECISIONS.md.
+ * repository's DECISIONS.md.
  */
 class Unknown {}
 JAVA
 
     cat > Fine.java <<'JAVA'
 /**
- * Both citations of this one are right: decision 7 in the Camunda 7 adapter's
+ * Both citations of this one are right: decision 7 in the repository's
  * DECISIONS.md, and {@code DECISIONS.pending/42.md} for the one still
  * waiting.
  */
