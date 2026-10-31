@@ -140,7 +140,8 @@ vanillabp:
 The keys are the ones of the Camunda 7 adapter, at `vanillabp.adapters.<id>.*`:
 `database-schema-update`, `history-time-to-live`, `data-source-name`, `table-prefix`,
 `serialization-format`, `engine-plugins`, `tenant-id`, `accept-unscoped-identifiers`,
-`allow-listeners`, `sleep-until-something-is-due` and `db-metrics-reporting`. None of them names
+`allow-listeners`, `sleep-until-something-is-due`, `db-metrics-reporting` and
+`message-time-to-live`. None of them names
 Camunda, so none of them changed. The adapter reads none of Operaton's own keys (`operaton.bpm.*`,
 `quarkus.operaton.*`), because it does not use Operaton's starter or extension. The
 [Configuration page of the wiki](https://github.com/vanillabp/operaton-adapter/wiki/Configuration)
