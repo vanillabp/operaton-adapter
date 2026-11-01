@@ -78,6 +78,8 @@ public class OperatonWorkflowLifecycleTest {
           // the test deploys it WHILE the application runs. So it must travel with the
           // application, but must not sit in the workflow module's resources location
           .addAsResource("c7-e2e/versioned/versioned-process-v2.bpmn")
+          // deployed by the test which asks how decisions are evaluated
+          .addAsResource("dmn-feel/loan-size.dmn")
           .addAsResource("workflow-module-descriptor/workflow-module", "META-INF/workflow-module"))
       // JVM args needed for tracking coverage. See this module's POM for the
       // systemPropertyVariables which feed 'jacoco.agent'
@@ -1087,6 +1089,25 @@ public class OperatonWorkflowLifecycleTest {
             .anyMatch(reported -> reported.startsWith("timer-") && reported.contains("|recordStart|COMPLETED/")),
         "the workflow the application named to run to its end, but got: "
             + strings("introspect/timer-aggregates"));
+
+  }
+
+  @Test
+  @DisplayName("without 'dmn-feel-legacy-behavior' the engine evaluates decisions with the FEEL engine library, as before")
+  public void decisionsUseTheFeelLibraryByDefault() {
+
+    // the same decision OperatonDmnFeelLegacyBehaviorTest evaluates with the key set
+    final Map<String, Object> reported = api()
+        .get("introspect/engine/dmn-feel")
+        .then()
+        .statusCode(200)
+        .extract()
+        .jsonPath()
+        .getMap("$");
+
+    assertEquals(Boolean.FALSE, reported.get("legacy"), () -> reported.toString());
+    assertEquals("ScalaFeelEngineFactory", reported.get("feelImplementation"), () -> reported.toString());
+    assertEquals(List.of("small", "medium", "medium", "large"), reported.get("sizes"));
 
   }
 

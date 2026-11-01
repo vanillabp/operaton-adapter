@@ -20,6 +20,7 @@ import io.vanillabp.operaton.sync.OperatonSerializationFormats;
 import io.vanillabp.operaton.sync.OperatonValueTypes;
 import io.vanillabp.operaton.sync.OperatonVariables;
 import io.vanillabp.operaton.wiring.OperatonConfiguredTenant;
+import io.vanillabp.operaton.wiring.OperatonMessageTimeToLiveResolver;
 import io.vanillabp.operaton.wiring.OperatonScoping;
 import io.vanillabp.operaton.wiring.OperatonTaskRegistry;
 import io.vanillabp.operaton.wiring.OperatonWorkflowTaskBehavior;
@@ -322,7 +323,7 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
    * How long a correlation waits for a subscription, per message. <code>null</code> in
    * tests, and then no message has a time-to-live.
    */
-  private io.vanillabp.operaton.wiring.OperatonMessageTimeToLiveResolver messageTimeToLiveResolver;
+  private OperatonMessageTimeToLiveResolver messageTimeToLiveResolver;
 
   /**
    * Hands over how long a correlation waits for a subscription. The platform integration
@@ -331,7 +332,7 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
    * @param messageTimeToLiveResolver The resolution of the platform integration
    */
   public void setMessageTimeToLiveResolver(
-      final io.vanillabp.operaton.wiring.OperatonMessageTimeToLiveResolver messageTimeToLiveResolver) {
+      final OperatonMessageTimeToLiveResolver messageTimeToLiveResolver) {
 
     this.messageTimeToLiveResolver = messageTimeToLiveResolver;
 
