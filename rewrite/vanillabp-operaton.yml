@@ -67,6 +67,9 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.Camunda7WorkflowProcessingLifecycle
       newFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.OperatonWorkflowProcessingLifecycle
   - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.engine.Camunda7DmnFeelLegacyBehavior
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.engine.OperatonDmnFeelLegacyBehavior
+  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.engine.Camunda7EngineCustomizer
       newFullyQualifiedTypeName: io.vanillabp.camunda7.engine.OperatonEngineCustomizer
   - org.openrewrite.java.ChangeType:
@@ -153,6 +156,9 @@ recipeList:
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.Camunda7Listeners
       newFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.OperatonListeners
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.Camunda7MessageTimeToLiveResolver
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.OperatonMessageTimeToLiveResolver
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.Camunda7ProcessVersions
       newFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.OperatonProcessVersions
@@ -283,11 +289,17 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.Camunda7WorkflowModuleIsolationTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.OperatonWorkflowModuleIsolationTest
   - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.engine.Camunda7DmnFeelLegacyBehaviorTest
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.engine.OperatonDmnFeelLegacyBehaviorTest
+  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.engine.Camunda7DueDateSleepTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.engine.OperatonDueDateSleepTest
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.engine.Camunda7EnginePluginsTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.engine.OperatonEnginePluginsTest
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.engine.Camunda7FeelLessEngine
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.engine.OperatonFeelLessEngine
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.engine.Camunda7InstanceIdentityTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.engine.OperatonInstanceIdentityTest
@@ -327,6 +339,9 @@ recipeList:
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.Camunda7ViewerOfACalledProcessTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.OperatonViewerOfACalledProcessTest
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.Camunda7WaitForASubscriptionTest
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.OperatonWaitForASubscriptionTest
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.Camunda7WorkflowViewerTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.OperatonWorkflowViewerTest
@@ -379,6 +394,9 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7AggregateSyncIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonAggregateSyncIT
   - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7AggregateSyncOnAnOwnDataSourceIT
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonAggregateSyncOnAnOwnDataSourceIT
+  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7BpmsInitiatedStartIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonBpmsInitiatedStartIT
   - org.openrewrite.java.ChangeType:
@@ -387,6 +405,9 @@ recipeList:
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7DeclaredIdRuntimeIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonDeclaredIdRuntimeIT
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7DmnFeelLegacyBehaviorIT
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonDmnFeelLegacyBehaviorIT
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7EngineCustomizerIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonEngineCustomizerIT
@@ -405,6 +426,9 @@ recipeList:
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7LossyFormatCheckIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonLossyFormatCheckIT
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7MessageTimeToLiveIT
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonMessageTimeToLiveIT
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7MissingDeliveryLogIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonMissingDeliveryLogIT
@@ -529,8 +553,14 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.Camunda7ModelledListenerTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.OperatonModelledListenerTest
   - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.Camunda7NamedDataSourceWithoutXaTest
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.OperatonNamedDataSourceWithoutXaTest
+  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.Camunda7NamesWhichHideNoTaskTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.OperatonNamesWhichHideNoTaskTest
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.Camunda7OnlyANamedDataSourceTest
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.OperatonOnlyANamedDataSourceTest
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.Camunda7PrefixWithoutItsTablesTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.OperatonPrefixWithoutItsTablesTest
@@ -574,8 +604,17 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.Camunda7WithoutOutboxTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.OperatonWithoutOutboxTest
   - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.Camunda7WorkflowEnd
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.OperatonWorkflowEnd
+  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.Camunda7WorkflowEndedTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.OperatonWorkflowEndedTest
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.Camunda7XaOnTheApplicationDataSourceTest
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.OperatonXaOnTheApplicationDataSourceTest
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.it.Camunda7DmnFeelLegacyBehaviorTest
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.it.OperatonDmnFeelLegacyBehaviorTest
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.it.Camunda7OldProcessVersionsTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.quarkus.it.OperatonOldProcessVersionsTest

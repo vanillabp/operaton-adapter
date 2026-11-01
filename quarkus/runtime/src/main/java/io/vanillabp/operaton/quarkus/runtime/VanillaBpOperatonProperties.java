@@ -570,6 +570,16 @@ public interface VanillaBpOperatonProperties {
      */
     Optional<Boolean> dbMetricsReporting();
 
+    /**
+     * OPTIONAL: whether the engine evaluates decisions with its older FEEL implementation,
+     * which needs no FEEL engine library. An application which runs the Operaton adapter next
+     * to this one needs it. The default is <code>false</code>. See
+     * {@code OperatonDmnFeelLegacyBehavior}.
+     *
+     * @return The configured answer, empty for <code>false</code>
+     */
+    Optional<Boolean> dmnFeelLegacyBehavior();
+
   }
 
 }
