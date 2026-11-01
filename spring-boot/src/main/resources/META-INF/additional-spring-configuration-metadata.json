@@ -28,6 +28,11 @@
       "description": "The serialization format of a shared value the engine has no variable type for, for example 'application/json' or 'application/xstream'. The matching dataformat has to be on the class path. It is also read per workflow module and per workflow, and the most specific value wins: 'vanillabp.workflow-modules.<module>.workflows.<workflow>.adapters.<id>.serialization-format'."
     },
     {
+      "name": "vanillabp.adapters.operaton.message-time-to-live",
+      "type": "java.time.Duration",
+      "description": "How long a correlated message waits for the workflow to reach the point where it waits for it, for example '10m'. It has the key and the meaning of the Camunda 8 adapter. Not set, or zero, refuses a correlation nothing waits for where the application made the call, as in version 1. It is also read per workflow module, per workflow and per message, and the most specific value wins: 'vanillabp.workflow-modules.<module>.workflows.<workflow>.messages.<message>.adapters.<id>.message-time-to-live'."
+    },
+    {
       "name": "vanillabp.adapters.operaton.engine-plugins",
       "type": "java.util.Map<java.lang.String,io.vanillabp.operaton.engine.OperatonEnginePluginProperties>",
       "description": "The Camunda engine plugins of this adapter id, keyed by a name you choose. Each one names its class in 'plugin-class' and its settings in 'properties'."
@@ -59,6 +64,12 @@
       "name": "vanillabp.adapters.operaton.db-metrics-reporting",
       "type": "java.lang.Boolean",
       "description": "Whether the engine writes its metrics to the database every 900 seconds. Default: the opposite of 'sleep-until-something-is-due', so a sleeping engine stops writing them."
+    },
+    {
+      "name": "vanillabp.adapters.operaton.dmn-feel-legacy-behavior",
+      "type": "java.lang.Boolean",
+      "description": "Whether the engine evaluates decisions with its older FEEL implementation, which needs no FEEL engine library. An application which runs the Operaton adapter next to this one needs it, together with an exclusion of 'org.camunda.feel:feel-engine'. Only the adapter level exists, because the setting belongs to the engine.",
+      "defaultValue": false
     }
   ]
 }

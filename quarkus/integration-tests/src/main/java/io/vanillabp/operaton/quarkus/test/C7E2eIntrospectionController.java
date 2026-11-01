@@ -326,6 +326,56 @@ public class C7E2eIntrospectionController {
 
   }
 
+  /**
+   * Which FEEL implementation the engine evaluates decisions with, and what it answers for a
+   * decision with a comparison and a range. Both FEEL implementations of Operaton understand
+   * that decision. It is deployed here and not with the workflow module, so only the tests
+   * which ask for it carry it (resource {@code dmn-feel/loan-size.dmn}).
+   *
+   * @return <code>legacy</code> (the engine setting), <code>feelImplementation</code> (the
+   *         simple class name of the engine's FEEL factory) and <code>sizes</code> (the answers
+   *         for 999, 1000, 5000 and 5001)
+   */
+  @GET
+  @Path("/engine/dmn-feel")
+  public Map<String, Object> dmnFeel() {
+
+    final var engine = engine().getProcessEngine();
+    final var configuration = (ProcessEngineConfigurationImpl) engine.getProcessEngineConfiguration();
+    engine
+        .getRepositoryService()
+        .createDeployment()
+        .addClasspathResource("dmn-feel/loan-size.dmn")
+        .enableDuplicateFiltering(false)
+        .name("loan-size")
+        .deploy();
+    final var sizes = java.util.stream.Stream
+        .of(999, 1000, 5000, 5001)
+        .map(amount -> engine
+            .getDecisionService()
+            .evaluateDecisionTableByKey(
+                "loanSize",
+                org.operaton.bpm.engine.variable.Variables.putValue("amount", amount))
+            .getSingleResult()
+            .getSingleEntry()
+            .toString())
+        .toList();
+
+    final var reported = new LinkedHashMap<String, Object>();
+    reported.put("legacy", Boolean.valueOf(configuration.isDmnFeelEnableLegacyBehavior()));
+    reported
+        .put(
+            "feelImplementation",
+            configuration
+                .getDmnEngineConfiguration()
+                .getFeelEngineFactory()
+                .getClass()
+                .getSimpleName());
+    reported.put("sizes", sizes);
+    return reported;
+
+  }
+
   // --- starting workflows ---
 
   /**
@@ -960,6 +1010,65 @@ public class C7E2eIntrospectionController {
         .list()
         .stream()
         .map(task -> task.getId())
+        .toList();
+
+  }
+
+  /**
+   * The open user tasks of an aggregate at one element of the model.
+   *
+   * @param aggregateId The aggregate's id, which is the business key
+   * @param elementId The id of the user task in the model
+   * @return The engine's task ids, empty where no such task is open
+   */
+  @GET
+  @Path("/engine/user-tasks/{aggregateId}/at/{elementId}")
+  public List<String> userTasksAt(
+      @PathParam("aggregateId") final String aggregateId,
+      @PathParam("elementId") final String elementId) {
+
+    return engine()
+        .getTaskService()
+        .createTaskQuery()
+        .processInstanceBusinessKey(aggregateId)
+        .taskDefinitionKey(elementId)
+        .list()
+        .stream()
+        .map(task -> task.getId())
+        .toList();
+
+  }
+
+  /**
+   * The correlations of an aggregate as the outbox table holds them: the status, the reason
+   * of the last failure and the arguments. A test reads from here whether a correlation
+   * waits, went through or was blocked, and why.
+   *
+   * @param aggregateId The aggregate's id
+   * @return One map per correlation
+   */
+  @GET
+  @Path("/outbox/correlations/{aggregateId}")
+  @Transactional
+  @SuppressWarnings("unchecked")
+  public List<Map<String, Object>> correlationsInTheOutbox(
+      @PathParam("aggregateId") final String aggregateId) {
+
+    final List<Object[]> rows = entityManager
+        .createNativeQuery(
+            "SELECT STATUS, LAST_FAILURE, ARGS FROM VANILLABP_PHASE_TWO_OUTBOX WHERE AGGREGATE_ID = ?1 "
+                + "AND OPERATION = 'CORRELATE_MESSAGE'")
+        .setParameter(1, aggregateId)
+        .getResultList();
+    return rows
+        .stream()
+        .<Map<String, Object>>map(row -> {
+          final var entry = new LinkedHashMap<String, Object>();
+          entry.put("status", String.valueOf(row[0]));
+          entry.put("lastFailure", String.valueOf(row[1]));
+          entry.put("args", String.valueOf(row[2]));
+          return entry;
+        })
         .toList();
 
   }

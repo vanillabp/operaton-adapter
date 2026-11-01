@@ -53,6 +53,9 @@ package io.vanillabp.operaton.engine;
  *       reporter writes its counters to the database every 900 seconds. Unset means
  *       the opposite of the sleep. So an engine which may sleep is not woken by its own
  *       metrics.</li>
+ *   <li><code>dmn-feel-legacy-behavior</code> - OPTIONAL. The engine evaluates decisions with
+ *       its older FEEL implementation, which needs no FEEL engine library. Default
+ *       <code>false</code>, see {@link OperatonDmnFeelLegacyBehavior}.</li>
  * </ul>
  */
 public class OperatonEngineProperties {
@@ -91,6 +94,17 @@ public class OperatonEngineProperties {
    * settings belong to the application. VanillaBP only names the format.
    */
   private String serializationFormat;
+
+  /**
+   * How long a correlation of a message waits for a subscription while nothing waits for
+   * the message yet. It has the key and the meaning of the Camunda 8 adapter, where the
+   * cluster keeps a published message for that long. Not set, or zero, means the
+   * correlation is refused in phase one where nothing waits, as in version 1.
+   * It is also read per workflow module, per workflow and per message, and the most
+   * specific value wins
+   * ({@code vanillabp.workflow-modules.<module>.workflows.<workflow>.messages.<message>.adapters.<id>.message-time-to-live}).
+   */
+  private java.time.Duration messageTimeToLive;
 
   /**
    * The Camunda engine plugins of this adapter id. Each one is a named section. It names a
@@ -159,6 +173,19 @@ public class OperatonEngineProperties {
    * either way. Only the writing stops.
    */
   private Boolean dbMetricsReporting;
+
+  /**
+   * Whether the engine evaluates decisions with its older FEEL implementation (Camunda's
+   * {@code dmnFeelEnableLegacyBehavior}). It needs no {@code org.camunda.feel:feel-engine}
+   * library. An application which runs the Operaton adapter next to this one needs it,
+   * because both engines bring a different version of that library. See
+   * {@link OperatonDmnFeelLegacyBehavior}. Default <code>false</code>, which is how
+   * VanillaBP 1 behaved.
+   * <p>
+   * There is only this adapter level. The setting belongs to the engine, and one engine
+   * serves every workflow module of the adapter id.
+   */
+  private boolean dmnFeelLegacyBehavior = false;
 
   /**
    * What the engine does to its schema on boot, e.g. <code>true</code>,
@@ -259,6 +286,25 @@ public class OperatonEngineProperties {
   public void setSerializationFormat(
       final String serializationFormat) {
     this.serializationFormat = serializationFormat;
+  }
+
+  /**
+   * How long a correlation waits for a subscription, for the whole adapter id.
+   *
+   * @return The time-to-live, <code>null</code> where none is configured
+   */
+  public java.time.Duration getMessageTimeToLive() {
+    return messageTimeToLive;
+  }
+
+  /**
+   * How long a correlation waits for a subscription, for the whole adapter id.
+   *
+   * @param messageTimeToLive The time-to-live
+   */
+  public void setMessageTimeToLive(
+      final java.time.Duration messageTimeToLive) {
+    this.messageTimeToLive = messageTimeToLive;
   }
 
   /**
@@ -372,6 +418,25 @@ public class OperatonEngineProperties {
   public void setDbMetricsReporting(
       final Boolean dbMetricsReporting) {
     this.dbMetricsReporting = dbMetricsReporting;
+  }
+
+  /**
+   * Whether the engine evaluates decisions with its older FEEL implementation.
+   *
+   * @return Whether the older FEEL implementation is used
+   */
+  public boolean isDmnFeelLegacyBehavior() {
+    return dmnFeelLegacyBehavior;
+  }
+
+  /**
+   * Whether the engine evaluates decisions with its older FEEL implementation.
+   *
+   * @param dmnFeelLegacyBehavior Whether the older FEEL implementation is used
+   */
+  public void setDmnFeelLegacyBehavior(
+      final boolean dmnFeelLegacyBehavior) {
+    this.dmnFeelLegacyBehavior = dmnFeelLegacyBehavior;
   }
 
   /**
