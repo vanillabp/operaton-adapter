@@ -157,9 +157,6 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.Camunda7Listeners
       newFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.OperatonListeners
   - org.openrewrite.java.ChangeType:
-      oldFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.Camunda7MessageTimeToLiveResolver
-      newFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.OperatonMessageTimeToLiveResolver
-  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.Camunda7ProcessVersions
       newFullyQualifiedTypeName: io.vanillabp.camunda7.wiring.OperatonProcessVersions
   - org.openrewrite.java.ChangeType:
