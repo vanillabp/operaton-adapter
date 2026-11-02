@@ -115,6 +115,9 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.Camunda7RefusedStart
       newFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.OperatonRefusedStart
   - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.Camunda7SuspendedWorkflow
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.OperatonSuspendedWorkflow
+  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.Camunda7WorkflowViewer
       newFullyQualifiedTypeName: io.vanillabp.camunda7.processservice.OperatonWorkflowViewer
   - org.openrewrite.java.ChangeType:
@@ -480,6 +483,9 @@ recipeList:
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7StartWorkflowIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonStartWorkflowIT
+  - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7SuspendedWorkflowIT
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonSuspendedWorkflowIT
   - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7TablePrefixIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonTablePrefixIT
