@@ -1138,10 +1138,10 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
               Operaton[%s]: nothing waited for %s within its message time-to-live of %s. It waited \
               %s since it was planned at %s. Check whether the workflow still reaches the point \
               where it waits for this message, or give the message a longer time-to-live \
-              (vanillabp.workflow-modules.%s.workflows.<bpmn-process-id>.messages.%s.adapters.%s.message-time-to-live)."""
+              (vanillabp.workflow-modules.%s.workflows.<bpmn-process-id>.messages.%s.message-time-to-live)."""
               .formatted(
                   adapterId, subject, timeToLive, waited, plannedAt, request.workflowModuleId(),
-                  request.messageName(), adapterId), null);
+                  request.messageName()), null);
     }
     return new PhaseTwoRetryLater(
         "Operaton[%s]: nothing waits for %s yet. It is tried again until its message time-to-live of %s is over"
@@ -1332,6 +1332,14 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
     // The third is a start of a process the engine does not hold. It is a case of its
     // own. The engine reports it with an exception which is repeatable for every other
     // operation. So the start marks its own refusal (OperatonRefusedStart).
+    //
+    // A suspended workflow is none of these, although the engine reports it with a subtype of
+    // BadUserRequestException. The same answer goes through once the workflow is resumed. The
+    // phase-two operations ask for the suspension before they act and wait for it, so this is
+    // only the net under that question
+    if (OperatonSuspendedWorkflow.isASuspension(failure)) {
+      return true;
+    }
     var candidate = failure;
     while (candidate != null) {
       if (candidate instanceof OperatonRefusedStart) {
@@ -1896,11 +1904,11 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
       // check BEFORE signaling. A failing engine command would mark the joined
       // transaction rollback-only, even if the exception is caught. Then the outbox
       // dispatcher's transaction could never commit the DONE entry
-      final var exists = runtimeService
+      final var execution = runtimeService
           .createExecutionQuery()
           .executionId(taskId)
-          .count() > 0;
-      if (!exists) {
+          .singleResult();
+      if (execution == null) {
         // the task disappeared before this signal. Phase one found it, so a repeated
         // dispatch finds it ended by the first one
         log.warn(
@@ -1913,18 +1921,34 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
                 : "cancellation");
         return;
       }
+      if (execution.isSuspended()) {
+        // asked before the signal for the same reason as above. The engine would refuse it
+        throw OperatonSuspendedWorkflow.waitInTheOutbox(adapterId, "task", taskId, bpmnErrorCode == null
+            ? "completion"
+            : "cancellation");
+      }
     }
-    if (beforeSignal != null) {
-      beforeSignal.run();
-    }
-    if (bpmnErrorCode == null) {
-      runtimeService.signal(taskId);
-    } else {
-      runtimeService.signal(
-          taskId,
-          OperatonWorkflowTaskBehavior.SIGNAL_CANCEL,
-          bpmnErrorCode,
-          java.util.Map.of());
+    try {
+      if (beforeSignal != null) {
+        beforeSignal.run();
+      }
+      if (bpmnErrorCode == null) {
+        runtimeService.signal(taskId);
+      } else {
+        runtimeService.signal(
+            taskId,
+            OperatonWorkflowTaskBehavior.SIGNAL_CANCEL,
+            bpmnErrorCode,
+            java.util.Map.of());
+      }
+    } catch (final RuntimeException e) {
+      // somebody suspended the workflow between the query and the signal
+      if (tolerateGoneTask && OperatonSuspendedWorkflow.isASuspension(e)) {
+        throw OperatonSuspendedWorkflow.waitInTheOutbox(adapterId, "task", taskId, bpmnErrorCode == null
+            ? "completion"
+            : "cancellation");
+      }
+      throw e;
     }
 
   }
@@ -1979,11 +2003,11 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
     if (tolerateGoneTask) {
       // check BEFORE executing, see signalTask. A failing engine command would
       // mark the joined transaction rollback-only, even if the exception is caught
-      final var exists = taskService
+      final var task = taskService
           .createTaskQuery()
           .taskId(taskId)
-          .count() > 0;
-      if (!exists) {
+          .singleResult();
+      if (task == null) {
         // a repeated dispatch, see signalTask
         log.warn(
             "Operaton[{}]: user task '{}' is gone - skipping the phase-two {}. The outbox "
@@ -1995,15 +2019,30 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
                 : "cancellation");
         return;
       }
+      if (task.isSuspended()) {
+        throw OperatonSuspendedWorkflow.waitInTheOutbox(adapterId, "user task", taskId, bpmnErrorCode == null
+            ? "completion"
+            : "cancellation");
+      }
     }
-    if (beforeExecute != null) {
-      beforeExecute.run();
-    }
-    if (bpmnErrorCode == null) {
-      taskService.complete(taskId);
-    } else {
-      // routes the workflow through an error boundary event on the user task
-      taskService.handleBpmnError(taskId, bpmnErrorCode);
+    try {
+      if (beforeExecute != null) {
+        beforeExecute.run();
+      }
+      if (bpmnErrorCode == null) {
+        taskService.complete(taskId);
+      } else {
+        // routes the workflow through an error boundary event on the user task
+        taskService.handleBpmnError(taskId, bpmnErrorCode);
+      }
+    } catch (final RuntimeException e) {
+      // somebody suspended the workflow between the query and the command, see signalTask
+      if (tolerateGoneTask && OperatonSuspendedWorkflow.isASuspension(e)) {
+        throw OperatonSuspendedWorkflow.waitInTheOutbox(adapterId, "user task", taskId, bpmnErrorCode == null
+            ? "completion"
+            : "cancellation");
+      }
+      throw e;
     }
 
   }
@@ -2089,17 +2128,20 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
       final String taskId,
       final String operationDescription) {
 
-    final var exists = runtimeService
+    final var execution = runtimeService
         .createExecutionQuery()
         .executionId(taskId)
-        .count() > 0;
-    if (!exists) {
+        .singleResult();
+    if (execution == null) {
       throw new io.vanillabp.spi.process.TaskNotFoundException(
           """
               The task '%s' is gone (completed or canceled meanwhile) - aborting the transaction %s \
               it! VanillaBP progresses the workflow after the commit, so a task which no longer \
               exists cannot be reached any more."""
               .formatted(taskId, operationDescription));
+    }
+    if (execution.isSuspended()) {
+      throw OperatonSuspendedWorkflow.refuseTheCall(adapterId, "task", taskId, operationDescription);
     }
 
   }
@@ -2115,17 +2157,20 @@ public class OperatonProcessService<A> implements MigratableProcessService<A> {
       final String taskId,
       final String operationDescription) {
 
-    final var exists = taskService
+    final var task = taskService
         .createTaskQuery()
         .taskId(taskId)
-        .count() > 0;
-    if (!exists) {
+        .singleResult();
+    if (task == null) {
       throw new io.vanillabp.spi.process.TaskNotFoundException(
           """
               The user task '%s' is gone (completed or canceled meanwhile) - aborting the \
               transaction %s it! VanillaBP progresses the workflow after the commit, so a task \
               which no longer exists cannot be reached any more."""
               .formatted(taskId, operationDescription));
+    }
+    if (task.isSuspended()) {
+      throw OperatonSuspendedWorkflow.refuseTheCall(adapterId, "user task", taskId, operationDescription);
     }
 
   }
