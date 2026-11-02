@@ -93,8 +93,8 @@
          DECISIONS.md). An application must not set another minor: the adapter uses engine
          classes under '.impl.', which Operaton may change in any minor. -->
     <operaton.version>2.2.0</operaton.version>
-    <spring-boot.version>4.1.1</spring-boot.version>
-    <quarkus.version>3.40.1</quarkus.version>
+    <spring-boot.version>4.1.2</spring-boot.version>
+    <quarkus.version>3.40.1.1</quarkus.version>
     <lombok.version>1.18.48</lombok.version>
   </properties>
 
