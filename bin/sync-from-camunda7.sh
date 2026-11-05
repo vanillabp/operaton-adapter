@@ -26,7 +26,10 @@
 #   bin/sync-from-camunda7.sh <camunda7 commit or tag>
 #
 # Environment:
-#   C7_REPOSITORY   where the Camunda 7 adapter is cloned from (default: the hub repository)
+#   C7_REPOSITORY   where the Camunda 7 adapter is cloned from (default: vanillabp/camunda7-adapter).
+#                   A path to a local clone works too.
+#   COMMIT_TRAILER  a last paragraph for the commit message, for instance a Co-Authored-By
+#                   line (default: none)
 #   MAVEN_ARGS      Maven reads this itself, in every call. For instance
 #                   '-Dmaven.repo.local=/tmp/m2' keeps the run out of your local repository.
 #
@@ -74,7 +77,7 @@ c7_ref=$1
 
 # CDPATH is cleared because cd prints the directory it found through CDPATH.
 repository=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
-c7_repository=${C7_REPOSITORY:-https://github.com/camunda-community-hub/vanillabp-camunda7-adapter.git}
+c7_repository=${C7_REPOSITORY:-https://github.com/vanillabp/camunda7-adapter.git}
 
 work=$(mktemp -d)
 echo "Working in $work"
@@ -142,7 +145,7 @@ if git diff --cached --quiet && git rev-parse --verify --quiet HEAD >/dev/null; 
   # the same Camunda 7 commit with the same recipes gives the same tree
   echo "Nothing changed: 'generated' already holds what $c7_sha gives."
 else
-  git commit --quiet -m "generated from C7 $c7_sha"
+  git commit --quiet -m "generated from C7 $c7_sha" ${COMMIT_TRAILER:+-m "$COMMIT_TRAILER"}
   echo "Committed $(git rev-parse HEAD) to 'generated'. Push it, then merge it into main."
 fi
 cd "$repository"

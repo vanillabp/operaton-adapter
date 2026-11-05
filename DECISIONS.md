@@ -17,7 +17,7 @@ an entry leaves out on purpose.
 
 This adapter does what the Camunda 7 adapter does, with Operaton as the engine. Its code is made
 from the Camunda 7 code, and the reasons for that code are written down in the
-[decision log of the Camunda 7 adapter](https://github.com/camunda-community-hub/vanillabp-camunda7-adapter/blob/main/DECISIONS.md).
+[decision log of the Camunda 7 adapter](https://github.com/vanillabp/camunda7-adapter/blob/main/DECISIONS.md).
 They hold here as well. Copying them would give two texts which drift apart, so they stay there.
 
 An entry below is about one of two things. Either Operaton differs from Camunda 7, or this

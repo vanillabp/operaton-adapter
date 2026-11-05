@@ -762,17 +762,6 @@ name: io.vanillabp.operaton.Camunda7NamesInText
 displayName: The names in strings, comments and resources
 description: What no Java recipe sees. Strings, comments, POMs, YAML, properties and JSON files.
 recipeList:
-  # The repository first, before 'camunda7' below turns it into a name nobody uses.
-  - org.openrewrite.text.FindAndReplace:
-      find: camunda-community-hub/vanillabp-camunda7-adapter
-      replace: vanillabp/operaton-adapter
-      caseSensitive: true
-  # The groupId. The Camunda Community Hub owns 'org.camunda.community', and Operaton is not
-  # a Camunda project.
-  - org.openrewrite.text.FindAndReplace:
-      find: org.camunda.community.vanillabp
-      replace: io.vanillabp
-      caseSensitive: true
   # Class names in strings and in resources, and the nested classes, which the type renames
   # above do not list. Also the log prefix 'Camunda7[...]' and the bean names
   # 'Camunda7_ProcessEngine_<id>'.
@@ -780,12 +769,18 @@ recipeList:
       find: Camunda7
       replace: Operaton
       caseSensitive: true
-  # The adapter type, the artifactIds, the engine names 'vanillabp-camunda7-<id>', the
-  # Quarkus extension name and its capability 'io.vanillabp.adapter.camunda7'.
+  # The adapter type, the artifactIds 'io.vanillabp:camunda7-*', the engine names
+  # 'vanillabp-camunda7-<id>', the Quarkus extension name and its capability
+  # 'io.vanillabp.adapter.camunda7', and the repository 'vanillabp/camunda7-adapter' with its
+  # wiki. No artifact of spi-for-java or of the platform has 'camunda7' in its name. Version 1
+  # of the Camunda 7 adapter, in 'camunda-community-hub/vanillabp-camunda7-adapter', stays as
+  # it is: a decision of the Camunda 7 adapter may name it, and there is no Operaton adapter of
+  # version 1.
   - org.openrewrite.text.FindAndReplace:
-      find: camunda7
+      find: '(?<!camunda-community-hub/vanillabp-)camunda7'
       replace: operaton
       caseSensitive: true
+      regex: true
   # Javadoc, comments, messages and the names of the Maven modules. A version number stays as
   # it is: 'Camunda 7.24' is a fact about Camunda. So does the name of the log a decision is
   # cited from, which the last recipe of this file writes. Without that exception a second

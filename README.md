@@ -30,7 +30,7 @@ for contributors.
 ## How this adapter relates to the Camunda 7 adapter
 
 The code of this adapter is made from the
-[Camunda 7 adapter](https://github.com/camunda-community-hub/vanillabp-camunda7-adapter) with two
+[Camunda 7 adapter](https://github.com/vanillabp/camunda7-adapter) with two
 OpenRewrite recipes. Operaton's own recipe renames everything which belongs to the engine. The recipe
 `rewrite/vanillabp-operaton.yml` gives the adapter its own names (decision 5 in the repository's
 DECISIONS.md). A few commits on top handle what Operaton does differently. The branch `generated`
@@ -38,7 +38,7 @@ holds what the recipes made, and `main` merges it. [`CONTRIBUTING.md`](./CONTRIB
 how a change of the Camunda 7 adapter comes over (decision 3 in the repository's DECISIONS.md).
 
 So this adapter behaves like the Camunda 7 adapter, with Operaton as the engine. The
-[README of the Camunda 7 adapter](https://github.com/camunda-community-hub/vanillabp-camunda7-adapter#readme)
+[README of the Camunda 7 adapter](https://github.com/vanillabp/camunda7-adapter#readme)
 describes that behaviour section by section, and every section of it holds here: the task processing,
 the outbound operations, the sharing of the workflow aggregate, the versions of a process, Quarkus in
 JVM mode only, and the rest. Read "Camunda 7" there as "Operaton", `camunda7` as `operaton` and
@@ -50,15 +50,15 @@ The decisions the generated code cites are those of the Camunda 7 adapter. The c
 
 What differs from the Camunda 7 adapter:
 
-|        Where        |                   Camunda 7 adapter                   |                      This adapter                       |
-|---------------------|-------------------------------------------------------|---------------------------------------------------------|
-| engine              | Camunda 7.24, `org.camunda.bpm`                       | Operaton 2.2, `org.operaton.bpm`                        |
-| adapter type        | `camunda7`                                            | `operaton`                                              |
-| artifacts           | `org.camunda.community.vanillabp:camunda7-adapter...` | `io.vanillabp:operaton-adapter...`                      |
-| BPMN namespace      | `camunda:`                                            | `operaton:` and `camunda:`, see below                   |
-| web applications    | `/camunda`, `camunda.bpm.*`                           | `/operaton`, `operaton.bpm.*`                           |
-| expression language | Camunda's own copy of the EL API                      | the real `jakarta.el` API, EL 6                         |
-| deployment source   | `camunda7:<id>`                                       | `operaton:<id>`, and `camunda7:<id>` is read as its own |
+|        Where        |         Camunda 7 adapter          |                      This adapter                       |
+|---------------------|------------------------------------|---------------------------------------------------------|
+| engine              | Camunda 7.24, `org.camunda.bpm`    | Operaton 2.2, `org.operaton.bpm`                        |
+| adapter type        | `camunda7`                         | `operaton`                                              |
+| artifacts           | `io.vanillabp:camunda7-adapter...` | `io.vanillabp:operaton-adapter...`                      |
+| BPMN namespace      | `camunda:`                         | `operaton:` and `camunda:`, see below                   |
+| web applications    | `/camunda`, `camunda.bpm.*`        | `/operaton`, `operaton.bpm.*`                           |
+| expression language | Camunda's own copy of the EL API   | the real `jakarta.el` API, EL 6                         |
+| deployment source   | `camunda7:<id>`                    | `operaton:<id>`, and `camunda7:<id>` is read as its own |
 
 ## Documentation and supported platforms
 
@@ -293,7 +293,7 @@ Operaton's decisions break. So an application which runs both engines does two t
 
    ```xml
    <dependency>
-     <groupId>org.camunda.community.vanillabp</groupId>
+     <groupId>io.vanillabp</groupId>
      <artifactId>camunda7-adapter-spring-boot</artifactId>
      <exclusions>
        <exclusion>
