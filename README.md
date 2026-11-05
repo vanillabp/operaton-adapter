@@ -50,15 +50,15 @@ The decisions the generated code cites are those of the Camunda 7 adapter. The c
 
 What differs from the Camunda 7 adapter:
 
-|        Where        |                   Camunda 7 adapter                   |                      This adapter                       |
-|---------------------|-------------------------------------------------------|---------------------------------------------------------|
-| engine              | Camunda 7.24, `org.camunda.bpm`                       | Operaton 2.2, `org.operaton.bpm`                        |
-| adapter type        | `camunda7`                                            | `operaton`                                              |
-| artifacts           | `io.vanillabp:camunda7-adapter...`                    | `io.vanillabp:operaton-adapter...`                      |
-| BPMN namespace      | `camunda:`                                            | `operaton:` and `camunda:`, see below                   |
-| web applications    | `/camunda`, `camunda.bpm.*`                           | `/operaton`, `operaton.bpm.*`                           |
-| expression language | Camunda's own copy of the EL API                      | the real `jakarta.el` API, EL 6                         |
-| deployment source   | `camunda7:<id>`                                       | `operaton:<id>`, and `camunda7:<id>` is read as its own |
+|        Where        |         Camunda 7 adapter          |                      This adapter                       |
+|---------------------|------------------------------------|---------------------------------------------------------|
+| engine              | Camunda 7.24, `org.camunda.bpm`    | Operaton 2.2, `org.operaton.bpm`                        |
+| adapter type        | `camunda7`                         | `operaton`                                              |
+| artifacts           | `io.vanillabp:camunda7-adapter...` | `io.vanillabp:operaton-adapter...`                      |
+| BPMN namespace      | `camunda:`                         | `operaton:` and `camunda:`, see below                   |
+| web applications    | `/camunda`, `camunda.bpm.*`        | `/operaton`, `operaton.bpm.*`                           |
+| expression language | Camunda's own copy of the EL API   | the real `jakarta.el` API, EL 6                         |
+| deployment source   | `camunda7:<id>`                    | `operaton:<id>`, and `camunda7:<id>` is read as its own |
 
 ## Documentation and supported platforms
 
