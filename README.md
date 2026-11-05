@@ -144,7 +144,7 @@ The keys are the ones of the Camunda 7 adapter, at `vanillabp.adapters.<id>.*`:
 Camunda, so none of them changed. `message-time-to-live` is not one of them: it names no adapter
 and is set for a workflow module, a workflow or a message
 (`vanillabp.workflow-modules.<workflow-module-id>.message-time-to-live`, see
-`DECISIONS.pending/2062.md`). The adapter reads none of Operaton's own keys (`operaton.bpm.*`,
+[decision 54 of the Camunda 7 adapter](https://github.com/vanillabp/camunda7-adapter/blob/main/DECISIONS.md#54-addendum-to-decision-53-the-platform-resolves-the-message-time-to-live)). The adapter reads none of Operaton's own keys (`operaton.bpm.*`,
 `quarkus.operaton.*`), because it does not use Operaton's starter or extension. The
 [Configuration page of the wiki](https://github.com/vanillabp/operaton-adapter/wiki/Configuration)
 describes each key.
