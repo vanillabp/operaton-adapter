@@ -59,8 +59,6 @@ jobs:
         run: mvn -s .github/workflows/maven-settings.xml --batch-mode --no-transfer-progress
           --update-snapshots install
         env:
-          USER_NAME: "${{ secrets.VANILLABP_USER_NAME }}"
-          USER_TOKEN: "${{ secrets.VANILLABP_USER_TOKEN }}"
           CI: false
       # A red night has to say what it was built against, otherwise the reader cannot tell a
       # platform break from a break of this repository. '2.0.0-SNAPSHOT' does not say it:
