@@ -2,18 +2,12 @@
 <!--
   What the workflows of this repository give Maven.
 
-  Two servers, and both read their credentials from environment variables, which only the
-  steps that need them set:
-
-  - 'vanillabp-central' is the server of the profile 'central-portal' in
-    io.vanillabp:release-parent. A push to main publishes the snapshots with it.
-  - 'vanillabp-camunda7-adapter' is the GitHub Packages registry of the
-    Camunda 7 adapter. The module migration-tests runs that adapter next to this one, and its
-    snapshots are only there. GitHub Packages wants a login even for a public package, so
-    the token needs 'read:packages'. This goes away once the Camunda 7 adapter has a release
-    on Maven Central.
+  One server, which reads its credentials from environment variables that only the steps
+  which need them set: 'vanillabp-central' is the server of the profile 'central-portal' in
+  io.vanillabp:release-parent. A push to main publishes the snapshots with it.
 
   Everything else comes from Maven Central and its snapshot repository, which need no login.
+  That includes the Camunda 7 adapter, which the module migration-tests runs next to this one.
 -->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -23,11 +17,6 @@
             <id>vanillabp-central</id>
             <username>${env.MAVEN_USERNAME}</username>
             <password>${env.MAVEN_PASSWORD}</password>
-        </server>
-        <server>
-            <id>vanillabp-camunda7-adapter</id>
-            <username>${env.USER_NAME}</username>
-            <password>${env.USER_TOKEN}</password>
         </server>
     </servers>
 </settings>
