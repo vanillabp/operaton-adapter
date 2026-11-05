@@ -179,3 +179,26 @@ a migration, and only with decisions. An application on one engine is not affect
 This holds for Operaton 2.2. Operaton 2.1 still used the shaded jar, so with it Maven picked one
 version for both engines. Each new Operaton minor runs `migration-tests` again, and a change of
 the FEEL engine there changes this entry.
+
+### 9. The Camunda 7 adapter comes from `vanillabp/camunda7-adapter` as `io.vanillabp`
+
+Proposed by story 2085. It changes decisions 5 and 7.
+
+**Why.** Since story 2083 the Camunda 7 adapter is built in `vanillabp/camunda7-adapter` again. Its
+artifacts have the groupId `io.vanillabp`, and its snapshots go to the snapshot repository of Maven
+Central. The copy in the Camunda Community Hub is frozen and holds only version 1.
+
+**What holds.**
+
+- `bin/sync-from-camunda7.sh` clones `vanillabp/camunda7-adapter` by default.
+- The recipe `rewrite/vanillabp-operaton.yml` no longer renames a groupId, because both adapters use
+  `io.vanillabp`. The rule `camunda7` -> `operaton` renames the artifactIds `io.vanillabp:camunda7-*`
+  and the links to the repository and its wiki. No artifact of `spi-for-java` or of the platform has
+  `camunda7` in its name, so the rule leaves them alone. A mention of version 1 in the Camunda
+  Community Hub stays as it is.
+- Decision 5: the groupId row of the table reads `io.vanillabp` on both sides. The artifactIds keep
+  the two adapters apart.
+- Decision 7: `migration-tests` takes the Camunda 7 adapter from the snapshot repository of Maven
+  Central, like every other VanillaBP snapshot. There is no GitHub Packages registry, no server entry
+  and no token any more. The module stays a module of its own for the first reason of decision 7.
+
