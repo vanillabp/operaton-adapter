@@ -2,14 +2,13 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" child.project.url.inherit.append.path="false" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
 
-  <!-- The VanillaBP release parent, like every repository of the vanillabp organisation. The
-       Camunda 7 adapter takes the release parent of the Camunda Community Hub instead, and
-       this POM is generated from that one. So the parent is one of the few places where
-       'main' differs from the branch 'generated' (see CONTRIBUTING.md). The parent brings the
-       plugins and the two profiles a release to Maven Central needs: sources, javadoc, the GPG
-       signature and the central-publishing plugin. It also names the snapshot repository of
-       Maven Central, which spi-for-java and the platform publish to. 'relativePath' is empty
-       because there is no POM beside this one to find it in. -->
+  <!-- The VanillaBP release parent, like every repository of the vanillabp organisation. It
+       brings the plugins and the two profiles a release to Maven Central needs: sources,
+       javadoc, the GPG signature and the central-publishing plugin. It also names the
+       snapshot repository of Maven Central, which spi-for-java and the platform publish to,
+       and which this adapter publishes its own snapshots to. 'relativePath' is empty because
+       there is no POM beside this one to find it in; without that, Maven looks at
+       '../pom.xml' first. -->
   <parent>
     <groupId>io.vanillabp</groupId>
     <artifactId>release-parent</artifactId>
@@ -269,7 +268,6 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-javadoc-plugin</artifactId>
-          <version>3.12.0</version>
           <configuration>
             <!-- javadoc runs in every build. A goal nobody runs stops working without
                  anybody noticing, and the release is a bad moment to find that out, because
@@ -336,7 +334,6 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
-        <version>3.4.0</version>
         <executions>
           <execution>
             <id>attach-sources</id>
