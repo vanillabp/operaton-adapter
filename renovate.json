@@ -8,8 +8,7 @@
     {
       "description": "VanillaBP and the adapters follow the framework, not Renovate: their versions are bumped when a release is cut, and while they are snapshots there is nothing to look up. The Camunda 7 adapter of the module migration-tests is one of them.",
       "matchPackageNames": [
-        "/^io\\.vanillabp/",
-        "/^org\\.camunda\\.community\\.vanillabp/"
+        "/^io\\.vanillabp/"
       ],
       "enabled": false
     },

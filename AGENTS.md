@@ -14,7 +14,7 @@ costs. Read it before you change anything at the SPI boundary.
 ## Most of the code is made, not written
 
 The code comes from the
-[Camunda 7 adapter](https://github.com/camunda-community-hub/vanillabp-camunda7-adapter). The
+[Camunda 7 adapter](https://github.com/vanillabp/camunda7-adapter). The
 script `bin/sync-from-camunda7.sh` copies it, renames it with two OpenRewrite recipes and commits
 the result to the branch `generated`. `main` merges `generated`. Everything this repository does
 differently sits on `main` as ordinary commits on top (decision 3 in the repository's
