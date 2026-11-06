@@ -11,10 +11,6 @@ name: Build and publish snapshots
 # The snapshots go to the snapshot repository of Maven Central. Anybody can read them there
 # without a login, the build of a pull request from a fork included. Writing needs the
 # Central Portal token, and only a push to main gets it.
-#
-# Reading needs a token for one artifact: the Camunda 7 adapter, which the module
-# migration-tests runs next to this adapter. Its snapshots are in the GitHub Packages
-# registry of the Camunda Community Hub, see maven-settings.xml.
 "on":
   pull_request:
   push:
