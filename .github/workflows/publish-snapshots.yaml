@@ -58,8 +58,6 @@ jobs:
         run: mvn -s .github/workflows/maven-settings.xml --batch-mode --no-transfer-progress
           --update-snapshots install
         env:
-          USER_NAME: "${{ secrets.VANILLABP_USER_NAME }}"
-          USER_TOKEN: "${{ secrets.VANILLABP_USER_TOKEN }}"
           CI: false
       # what a failing test printed is in these reports, and for the Quarkus modules
       # booting their application in the test JVM it is ONLY there: their output is
@@ -83,8 +81,6 @@ jobs:
         run: mvn -s .github/workflows/maven-settings.xml --batch-mode --no-transfer-progress
           --update-snapshots deploy -P central-portal
         env:
-          USER_NAME: "${{ secrets.VANILLABP_USER_NAME }}"
-          USER_TOKEN: "${{ secrets.VANILLABP_USER_TOKEN }}"
           MAVEN_USERNAME: "${{ secrets.MAVEN_CENTRAL_PORTAL_TOKEN_USER }}"
           MAVEN_PASSWORD: "${{ secrets.MAVEN_CENTRAL_PORTAL_TOKEN_PW }}"
           CI: false
