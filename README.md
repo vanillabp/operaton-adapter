@@ -52,7 +52,7 @@ What differs from the Camunda 7 adapter:
 
 |        Where        |         Camunda 7 adapter          |                      This adapter                       |
 |---------------------|------------------------------------|---------------------------------------------------------|
-| engine              | Camunda 7.24, `org.camunda.bpm`    | Operaton 2.2, `org.operaton.bpm`                        |
+| engine              | Camunda 7.24, `org.camunda.bpm`    | Operaton 2.x, `org.operaton.bpm`                        |
 | adapter type        | `camunda7`                         | `operaton`                                              |
 | artifacts           | `io.vanillabp:camunda7-adapter...` | `io.vanillabp:operaton-adapter...`                      |
 | BPMN namespace      | `camunda:`                         | `operaton:` and `camunda:`, see below                   |
@@ -214,16 +214,15 @@ Quarkus there are no web applications, as with Camunda 7.
 
 ## Supported Operaton version
 
-| Adapter version  | Operaton version it was built and tested with |
-|------------------|-----------------------------------------------|
-| `2.0.0-SNAPSHOT` | 2.2.0                                         |
-
-The root POM pins Operaton in the property `operaton.version` (decision 4 in the repository's
-DECISIONS.md). There is one line of this adapter, and it follows the newest Operaton minor:
+The adapter is built and tested with the Operaton version in the property `operaton.version` of
+the [root POM](./pom.xml). This README does not repeat the number, so that it cannot fall behind
+(decision 4 in the repository's DECISIONS.md). There is one line of this adapter, and it follows the
+newest Operaton minor:
 
 - Operaton releases a minor every April and October and fixes only the newest one, with monthly
-  patches. Renovate raises the patch here on its own. A new minor needs a person, and comes in within
-  a month of its release.
+  patches. Renovate raises a patch and a minor here on its own, as soon as the build is green. A
+  setting which the new version adds becomes an issue labelled `client-configuration`, see
+  `client-configuration-inventory.yml`. A new major needs a person.
 - **Do not set `operaton.version` to another minor in your application.** The adapter uses engine
   classes under `.impl.`, and Operaton may change them in any minor without notice.
 - Operaton promises that the database schema stays compatible between two minors in a row. An
