@@ -130,7 +130,7 @@ mvn --batch-mode --no-transfer-progress "${NO_BUILD[@]}" \
   -Drewrite.activeRecipes=io.vanillabp.operaton.FromCamunda7 \
   -Drewrite.exportDatatables=false
 
-# The Operaton version is the one of main. Renovate raises it there, a patch and a minor alike.
+# The Operaton version is the one of main. Renovate raises it there.
 # Taking it from main means a sync never sets it back, and nobody raises it in a second place.
 operaton_version=$(sed -n 's|.*<operaton\.version>\([^<]*\)</operaton\.version>.*|\1|p' "$repository/pom.xml" | head -n 1)
 if [ -z "$operaton_version" ]; then

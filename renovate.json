@@ -13,25 +13,28 @@
       "enabled": false
     },
     {
-      "description": "Operaton fixes only its newest minor, with a patch every month, and this adapter follows the newest minor. A patch or a minor merges itself once the build is green. The build compiles and tests the adapter against the engine classes under '.impl.', which Operaton may change in any minor. Nothing else names the version: the README points at the root POM, and bin/sync-from-camunda7.sh takes the version from there. A setting which the new version adds becomes an issue, opened by the job 'client-configuration' of checks.yaml.",
+      "description": "Operaton fixes only its newest minor, with a patch every month, and this adapter follows it (decision 4 in DECISIONS.md). A patch comes in on its own.",
       "matchPackageNames": [
         "/^org\\.operaton/"
       ],
       "matchUpdateTypes": [
-        "patch",
-        "minor"
+        "patch"
       ],
       "automerge": true
     },
     {
-      "description": "A new Operaton major may change the database and the API, so it comes as a pull request to look at. Milestones and release candidates are left to the nightly build against the next Operaton.",
+      "description": "A new Operaton minor never merges itself. Renovate only proposes it, and a person decides when the adapter moves on: the adapter uses engine classes under '.impl.', which Operaton may change in any minor, and an application has to upgrade its database with it. The job 'client-configuration' of checks.yaml lists on the pull request which settings the new version adds. Milestones and release candidates are left to the nightly build against the next Operaton.",
       "matchPackageNames": [
         "/^org\\.operaton/"
       ],
       "matchUpdateTypes": [
+        "minor",
         "major"
       ],
-      "automerge": false
+      "automerge": false,
+      "addLabels": [
+        "needs-doc-update"
+      ]
     }
   ]
 }
