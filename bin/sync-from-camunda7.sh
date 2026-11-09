@@ -17,8 +17,9 @@
 #   3. It runs Operaton's OpenRewrite recipe. That one renames what belongs to the engine:
 #      packages, Maven coordinates, the getters of the model API.
 #   4. It lists the type renames and runs VanillaBP's recipe rewrite/vanillabp-operaton.yml.
-#      That one pins the Operaton version and renames what belongs to VanillaBP: the Java
-#      package, the classes, the adapter type, the names in strings.
+#      That one renames what belongs to VanillaBP: the Java package, the classes, the adapter
+#      type, the names in strings. Then it sets the Operaton version of the root POM to the
+#      one of the checkout it runs in.
 #   5. It formats the result with the Spotless rules of the repository.
 #   6. It commits the result as "generated from C7 <full sha>". It does not push.
 #
@@ -44,7 +45,9 @@ REWRITE_PLUGIN=org.openrewrite.maven:rewrite-maven-plugin:6.46.1
 OPERATON_RECIPE=org.operaton:migrate-camunda-recipe:1.0.1
 
 # Files of the Camunda 7 adapter which this repository writes itself. They are not copied, so
-# 'generated' never holds them and a merge never touches them.
+# 'generated' never holds them and a merge never touches them. The inventory of the client
+# settings is one of them: it lists the settings of this engine, which has some Camunda 7 does
+# not have.
 KEPT_BY_MAIN=(
   .git
   .github
@@ -54,6 +57,7 @@ KEPT_BY_MAIN=(
   DECISIONS.md
   README.md
   UPGRADE.md
+  client-configuration-inventory.yml
   renovate.json
 )
 
@@ -125,6 +129,19 @@ mvn --batch-mode --no-transfer-progress "${NO_BUILD[@]}" \
   -Drewrite.configLocation="$recipe" \
   -Drewrite.activeRecipes=io.vanillabp.operaton.FromCamunda7 \
   -Drewrite.exportDatatables=false
+
+# The Operaton version is the one of main. Renovate raises it there, a patch and a minor alike.
+# Taking it from main means a sync never sets it back, and nobody raises it in a second place.
+operaton_version=$(sed -n 's|.*<operaton\.version>\([^<]*\)</operaton\.version>.*|\1|p' "$repository/pom.xml" | head -n 1)
+if [ -z "$operaton_version" ]; then
+  echo "The root POM of $repository names no operaton.version, so the sync cannot know the version." >&2
+  exit 1
+fi
+if ! grep -q '<operaton\.version>' "$tree/pom.xml"; then
+  echo "The recipes left no operaton.version in the root POM of $tree, so the version cannot be set." >&2
+  exit 1
+fi
+sed -i "s|<operaton\.version>[^<]*</operaton\.version>|<operaton.version>${operaton_version}</operaton.version>|" "$tree/pom.xml"
 
 # The formatting rules of the repository, applied once here, so that 'main' never has to
 # carry a formatting change of generated code. The recipes write correct code, but not always

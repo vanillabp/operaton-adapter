@@ -741,15 +741,8 @@ recipeList:
       replace: operaton.version
       caseSensitive: true
       filePattern: '**/pom.xml'
-  # The Operaton minor this adapter is built and tested with. A patch release comes through
-  # Renovate on main, and main keeps it on the next sync, because this line does not change.
-  # A new minor is raised here and in the root POM of main together.
-  - org.openrewrite.text.FindAndReplace:
-      find: '<operaton.version>[^<]*</operaton.version>'
-      replace: '<operaton.version>2.2.0</operaton.version>'
-      caseSensitive: true
-      regex: true
-      filePattern: pom.xml
+  # The value of 'operaton.version' is not set here. bin/sync-from-camunda7.sh copies it from
+  # the root POM of main, where Renovate raises it, so nobody has to raise it here as well.
   - org.openrewrite.text.FindAndReplace:
       find: '(<groupId>org\.operaton[a-z.]*</groupId>\s*<artifactId>[a-z0-9-]+</artifactId>\s*<scope>[a-z]+</scope>)\s*<version>[^<]+</version>'
       replace: '$1'

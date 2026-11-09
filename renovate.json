@@ -13,28 +13,25 @@
       "enabled": false
     },
     {
-      "description": "Operaton fixes only its newest minor, with a patch every month, and this adapter follows it (decision 4 in DECISIONS.md). A patch comes in on its own.",
+      "description": "Operaton fixes only its newest minor, with a patch every month, and this adapter follows the newest minor. A patch or a minor merges itself once the build is green. The build compiles and tests the adapter against the engine classes under '.impl.', which Operaton may change in any minor. Nothing else names the version: the README points at the root POM, and bin/sync-from-camunda7.sh takes the version from there. A setting which the new version adds becomes an issue, opened by the job 'client-configuration' of checks.yaml.",
       "matchPackageNames": [
         "/^org\\.operaton/"
       ],
       "matchUpdateTypes": [
-        "patch"
+        "patch",
+        "minor"
       ],
       "automerge": true
     },
     {
-      "description": "A new Operaton minor needs a person: the adapter uses engine classes under '.impl.', which Operaton may change in any minor, the README names the version the adapter was tested with, and the recipe rewrite/vanillabp-operaton.yml pins the same minor. So it comes as a pull request to look at. Milestones and release candidates are left to the nightly build against the next Operaton.",
+      "description": "A new Operaton major may change the database and the API, so it comes as a pull request to look at. Milestones and release candidates are left to the nightly build against the next Operaton.",
       "matchPackageNames": [
         "/^org\\.operaton/"
       ],
       "matchUpdateTypes": [
-        "minor",
         "major"
       ],
-      "automerge": false,
-      "addLabels": [
-        "needs-doc-update"
-      ]
+      "automerge": false
     }
   ]
 }
