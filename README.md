@@ -220,9 +220,9 @@ the [root POM](./pom.xml). This README does not repeat the number, so that it ca
 newest Operaton minor:
 
 - Operaton releases a minor every April and October and fixes only the newest one, with monthly
-  patches. Renovate raises a patch and a minor here on its own, as soon as the build is green. A
-  setting which the new version adds becomes an issue labelled `client-configuration`, see
-  `client-configuration-inventory.yml`. A new major needs a person.
+  patches. Renovate raises a patch here on its own, as soon as the build is green. A new minor
+  or major is only proposed as a pull request and needs a person. A setting which a new version
+  adds becomes an issue labelled `client-configuration`, see `client-configuration-inventory.yml`.
 - **Do not set `operaton.version` to another minor in your application.** The adapter uses engine
   classes under `.impl.`, and Operaton may change them in any minor without notice.
 - Operaton promises that the database schema stays compatible between two minors in a row. An
