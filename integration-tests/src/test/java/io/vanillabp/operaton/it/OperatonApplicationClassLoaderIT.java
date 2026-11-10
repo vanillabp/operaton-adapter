@@ -139,10 +139,10 @@ public class OperatonApplicationClassLoaderIT {
             """
                 package hidden;
 
-                public class HiddenDelegate implements org.camunda.bpm.engine.delegate.JavaDelegate {
+                public class HiddenDelegate implements org.operaton.bpm.engine.delegate.JavaDelegate {
 
                   @Override
-                  public void execute(org.camunda.bpm.engine.delegate.DelegateExecution execution) {
+                  public void execute(org.operaton.bpm.engine.delegate.DelegateExecution execution) {
                     execution.setVariable("calledBy", getClass().getName());
                   }
 
