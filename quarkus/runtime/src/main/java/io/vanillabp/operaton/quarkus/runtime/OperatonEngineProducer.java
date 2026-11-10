@@ -131,6 +131,12 @@ public class OperatonEngineProducer {
                         .isDefaultDataSourceName(
                             dataSourceName), transactionManager, workflowTaskRegistry, workflowTaskRegistry, workflowTaskRegistry));
           } catch (final RuntimeException e) {
+            // the adapter's own explanation already names the key and what to write. Wrapped
+            // into the general message below, it would be the second thing the developer reads
+            final var explanation = io.vanillabp.operaton.engine.OperatonStartupExplanation.in(e);
+            if (explanation != null) {
+              throw explanation;
+            }
             throw new IllegalStateException(
                 """
                     Operaton adapter '%s': building the embedded engine on datasource '%s' failed! \
@@ -175,11 +181,13 @@ public class OperatonEngineProducer {
     }
     keys.databaseSchemaUpdate().ifPresent(properties::setDatabaseSchemaUpdate);
     keys.historyTimeToLive().ifPresent(properties::setHistoryTimeToLive);
+    keys.historyLevel().ifPresent(properties::setHistoryLevel);
     keys.tablePrefix().ifPresent(properties::setTablePrefix);
     keys.serializationFormat().ifPresent(properties::setSerializationFormat);
     keys.sleepUntilSomethingIsDue().ifPresent(properties::setSleepUntilSomethingIsDue);
     keys.dbMetricsReporting().ifPresent(properties::setDbMetricsReporting);
     keys.dmnFeelLegacyBehavior().ifPresent(properties::setDmnFeelLegacyBehavior);
+    keys.allowPluginsToChangeAdapterSettings().ifPresent(properties::setAllowPluginsToChangeAdapterSettings);
     // the named plugin sections are copied onto the platform-neutral model. So the core
     // builds and configures them the same way on both platforms
     properties

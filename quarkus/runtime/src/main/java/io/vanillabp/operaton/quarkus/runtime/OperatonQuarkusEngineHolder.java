@@ -181,6 +181,12 @@ public class OperatonQuarkusEngineHolder implements OperatonWorkflowProcessingLi
     configuration.setDatabaseSchemaUpdate(properties.getDatabaseSchemaUpdate());
     // activation waits for startWorkflowProcessing, as on Spring Boot
     configuration.setJobExecutorActivate(false);
+    // the job executor fetches only the jobs of deployments registered with this engine, as
+    // in version 1. During a rolling update a node with the old code then leaves the jobs of
+    // a newer version alone. The deployment service registers every version this
+    // application deployed before, so workflows on older versions keep running. See
+    // decision 59 in the Camunda 7 adapter's DECISIONS.md
+    configuration.setJobExecutorDeploymentAware(true);
     // an adapter id which may let its engine sleep needs the acquisition loop which asks
     // for the next due date. The executor itself installs that loop. Without the sleep
     // the engine builds its own executor, exactly as before
@@ -195,6 +201,12 @@ public class OperatonQuarkusEngineHolder implements OperatonWorkflowProcessingLi
     // the FEEL implementation decisions are evaluated with. The older one needs no FEEL
     // engine library, which is what an application needs next to the Operaton adapter
     io.vanillabp.operaton.engine.OperatonDmnFeelLegacyBehavior.applyTo(adapterId, configuration, properties);
+
+    // the same history level and ids as on Spring Boot, where they are the ones of version 1.
+    // Version 1 had no Quarkus adapter, but an application should get the same engine on both
+    // platforms. See decision 58 in the Camunda 7 adapter's DECISIONS.md
+    io.vanillabp.operaton.engine.OperatonHistoryLevel.applyTo(adapterId, configuration, properties);
+    configuration.setIdGenerator(new org.operaton.bpm.engine.impl.persistence.StrongUuidGenerator());
     // job-executor threads must load delegate classes through the Quarkus runtime
     // classloader. Otherwise they fail with ClassNotFoundException; we have seen it
     configuration.setClassLoader(Thread.currentThread().getContextClassLoader());
@@ -259,6 +271,23 @@ public class OperatonQuarkusEngineHolder implements OperatonWorkflowProcessingLi
                 .map(io.quarkus.arc.InstanceHandle::get)
                 .toList());
 
+    // a plugin of the application runs after everything above. So it could change a
+    // setting the adapter sets itself without anybody noticing. This puts a watch around
+    // the plugins, which names each such change and the plugin which made it. The
+    // transaction manager is the one setting only this platform has
+    io.vanillabp.operaton.engine.OperatonAdapterSettingsGuard
+        .watch(
+            adapterId,
+            configuration,
+            properties.isAllowPluginsToChangeAdapterSettings(),
+            java.util.List
+                .of(
+                    io.vanillabp.operaton.engine.OperatonAdapterSettingsGuard.Setting
+                        .value(
+                            "transactionManager",
+                            settings -> ((org.operaton.bpm.engine.impl.cfg.JakartaTransactionProcessEngineConfiguration) settings)
+                                .getTransactionManager())));
+
     try {
       this.processEngine = configuration.buildProcessEngine();
     } catch (final RuntimeException | LinkageError e) {
@@ -266,6 +295,10 @@ public class OperatonQuarkusEngineHolder implements OperatonWorkflowProcessingLi
       // error. The developer gets the remedy instead of a NoSuchMethodError
       io.vanillabp.operaton.engine.OperatonDmnFeelLegacyBehavior.explainWhyTheEngineDidNotStart(adapterId, properties,
           e);
+      // a history level the engine does not know, or one which differs from the level in
+      // the database. The developer gets the key and the stored level
+      io.vanillabp.operaton.engine.OperatonHistoryLevel.explainWhyTheEngineDidNotStart(adapterId, configuration,
+          properties, e);
       throw e;
     }
     this.jobExecutorLifecycle = new OperatonJobExecutorLifecycle(
