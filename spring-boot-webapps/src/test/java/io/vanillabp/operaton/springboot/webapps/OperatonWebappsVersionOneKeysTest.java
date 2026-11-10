@@ -1,10 +1,13 @@
 package io.vanillabp.operaton.springboot.webapps;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -17,17 +20,16 @@ import io.vanillabp.integration.test.utils.SuppressOutputExtension;
 
 /**
  * A key of Camunda's Spring Boot starter ends the start, except where something really
- * reads it. This module hands <code>camunda.bpm.webapp.*</code> to Camunda's web
- * applications and reads <code>camunda.bpm.enabled</code> itself. So with this module both
- * may stay in the configuration. The adapter finds this module by the name of
- * {@link OperatonWebappsAutoConfiguration}. This test goes red if that class is renamed, because
- * then the key below ends the start.
+ * reads it. The webapps module of the Camunda 7 adapter reads <code>camunda.bpm.webapp.*</code>
+ * and <code>camunda.bpm.enabled</code>. This module does not: Operaton's web applications read
+ * <code>operaton.bpm.webapp.*</code>, and the module reads <code>operaton.bpm.enabled</code>. So
+ * the Operaton name takes effect, and the Camunda name ends the start with this module, too.
  */
 @ExtendWith(SuppressOutputExtension.class)
 @SpringBootTest(
     webEnvironment = WebEnvironment.RANDOM_PORT,
     properties = {
-        "spring.datasource.url=jdbc:h2:mem:c7-webapps-v1-keys;DB_CLOSE_DELAY=-1", "camunda.bpm.enabled=false", "camunda.bpm.webapp.application-path=/engine-ui"
+        "spring.datasource.url=jdbc:h2:mem:c7-webapps-v1-keys;DB_CLOSE_DELAY=-1", "operaton.bpm.enabled=false", "operaton.bpm.webapp.application-path=/engine-ui"
     })
 @DirtiesContext(classMode = ClassMode.AFTER_CLASS)
 public class OperatonWebappsVersionOneKeysTest {
@@ -36,8 +38,8 @@ public class OperatonWebappsVersionOneKeysTest {
   private int port;
 
   @Test
-  @DisplayName("A key the web applications read does not end the start, and it takes effect")
-  public void aKeyTheWebappsReadIsKept() {
+  @DisplayName("The Operaton name of a key the web applications read takes effect")
+  public void theOperatonNameOfAWebappsKeyTakesEffect() {
 
     final var entry = RestClient
         .builder()
@@ -57,6 +59,32 @@ public class OperatonWebappsVersionOneKeysTest {
         () -> entry
             .getHeaders()
             .getFirst(HttpHeaders.LOCATION));
+
+  }
+
+  @Test
+  @DisplayName("The Camunda name of a key the web applications read ends the start, with this module, too")
+  public void theCamundaNameOfAWebappsKeyEndsTheStart() {
+
+    final var refused = assertThrows(
+        RuntimeException.class,
+        () -> new SpringApplicationBuilder(TestApplication.class)
+            .web(WebApplicationType.NONE)
+            .properties(
+                "spring.datasource.url=jdbc:h2:mem:c7-webapps-v1-camunda-keys;DB_CLOSE_DELAY=-1",
+                "camunda.bpm.webapp.application-path=/engine-ui")
+            .run()
+            .close());
+
+    var cause = (Throwable) refused;
+    while (cause.getCause() != null) {
+      cause = cause.getCause();
+    }
+    final var message = cause.getMessage();
+    assertTrue(
+        message.contains("'camunda.bpm.webapp.application-path': Operaton's web applications read "
+            + "'operaton.bpm.webapp.*' instead."),
+        () -> message);
 
   }
 

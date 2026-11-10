@@ -149,8 +149,8 @@ public class OperatonVersionOneKeysTest {
         message.contains("'camunda.bpm.process-engine-name': VanillaBP names the engine 'vanillabp-operaton-c7'."),
         message);
     Assertions.assertTrue(
-        message.contains("'camunda.bpm.webapp.application-path': Add the module "
-            + "operaton-adapter-spring-boot-webapps"),
+        message.contains("'camunda.bpm.webapp.application-path': Operaton's web applications read "
+            + "'operaton.bpm.webapp.*' instead."),
         message);
     Assertions.assertTrue(
         message.contains("'camunda.bpm.enabled': VanillaBP builds an engine for every adapter id of type operaton."),
@@ -163,27 +163,25 @@ public class OperatonVersionOneKeysTest {
   }
 
   @Test
-  @DisplayName("With the webapps module, the keys it reads and the keys its starter writes are left alone")
-  public void theKeysOfTheWebappsModuleAreLeftAlone() {
+  @DisplayName("With the webapps module, the Camunda names of its keys still end the start")
+  public void theCamundaNamesOfTheWebappsKeysEndTheStartWithTheModule() {
 
-    Assertions.assertNull(
-        messageFor(
-            List.of("c7"),
-            true,
-            "camunda.bpm.webapp.application-path",
-            "camunda.bpm.webapp.csrf.target-origin",
-            "camunda.bpm.enabled",
-            "CAMUNDA_BPM_WEBAPP_INDEX_REDIRECT_ENABLED",
-            "camunda.bpm.version",
-            "camunda.bpm.formatted-version",
-            "camunda.bpm.is-enterprise"));
-    // the starter writes its version keys whether the module is there or not
-    Assertions.assertNull(messageFor(List.of("c7"), false, "camunda.bpm.version"));
+    // Operaton's web applications read operaton.bpm.webapp.*, and the module reads
+    // operaton.bpm.enabled. Their Camunda names would change nothing
     final var message = messageFor(List.of("c7"), true, "camunda.bpm.webapp.application-path",
-        "camunda.bpm.history-level");
+        "CAMUNDA_BPM_WEBAPP_INDEX_REDIRECT_ENABLED", "camunda.bpm.enabled", "camunda.bpm.version");
     Assertions.assertNotNull(message);
-    Assertions.assertFalse(message.contains("Add the module operaton-adapter-spring-boot-webapps"), message);
-    Assertions.assertTrue(message.contains("'camunda.bpm.history-level': Write"), message);
+    Assertions.assertTrue(
+        message.contains("'camunda.bpm.webapp.application-path': Operaton's web applications read "
+            + "'operaton.bpm.webapp.*' instead."),
+        message);
+    Assertions.assertTrue(message.contains("'CAMUNDA_BPM_WEBAPP_INDEX_REDIRECT_ENABLED'"), message);
+    Assertions.assertTrue(
+        message.contains("'camunda.bpm.enabled': VanillaBP builds an engine for every adapter id of type operaton."),
+        message);
+    // the starter writes its version keys whether the module is there or not
+    Assertions.assertFalse(message.contains("'camunda.bpm.version'"), message);
+    Assertions.assertNull(messageFor(List.of("c7"), false, "camunda.bpm.version"));
 
   }
 

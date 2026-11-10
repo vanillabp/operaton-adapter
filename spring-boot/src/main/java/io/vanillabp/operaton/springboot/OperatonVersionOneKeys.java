@@ -18,9 +18,11 @@ import java.util.Map;
  * stands ends the start in VanillaBP, so this one does too.
  * <p>
  * A key which something on the classpath really reads is left alone. The module
- * <code>operaton-adapter-spring-boot-webapps</code> hands <code>camunda.bpm.webapp.*</code> to
- * Camunda's web applications and reads <code>camunda.bpm.enabled</code> itself. The starter it
- * brings writes <code>camunda.bpm.version</code>, <code>camunda.bpm.is-enterprise</code> and
+ * <code>operaton-adapter-spring-boot-webapps</code> is no such thing here. Operaton's web
+ * applications read <code>operaton.bpm.webapp.*</code>, and the module reads
+ * <code>operaton.bpm.enabled</code>. So <code>camunda.bpm.webapp.*</code> and
+ * <code>camunda.bpm.enabled</code> end the start with the module, too. The starter of the Camunda 7
+ * adapter's webapps module writes <code>camunda.bpm.version</code>, <code>camunda.bpm.is-enterprise</code> and
  * <code>camunda.bpm.formatted-version</code> into the environment on its own. Camunda's
  * starter of the external task client, <code>camunda-bpm-spring-boot-starter-external-task-client</code>,
  * reads <code>camunda.bpm.client.*</code>. An application may use it next to the adapter, to
@@ -36,8 +38,9 @@ final class OperatonVersionOneKeys {
 
   /**
    * The class of the webapps module. It is named as text, because this module does not
-   * depend on that one. <code>OperatonWebappsVersionOneKeysTest</code> in the webapps module
-   * fails if the class is renamed.
+   * depend on that one. Here the module leaves no key alone (see
+   * <code>READ_BY_THE_WEBAPPS_MODULE</code>), so the answer changes nothing. It stays asked, so that
+   * this class keeps the shape of the Camunda 7 adapter's.
    */
   static final String WEBAPPS_MODULE_CLASS = "io.vanillabp.operaton.springboot.webapps.OperatonWebappsAutoConfiguration";
 
@@ -149,8 +152,8 @@ final class OperatonVersionOneKeys {
               "rest-api", "The engine's REST API is not part of the adapter. "
                   + REMOVE_IT),
           new Rule(
-              "webapp", "Add the module operaton-adapter-spring-boot-webapps, which serves the web "
-                  + "applications and reads these keys, or remove the key."),
+              "webapp", "Operaton's web applications read 'operaton.bpm.webapp.*' instead. Write the key "
+                  + "there, with the module operaton-adapter-spring-boot-webapps on the classpath, or remove it."),
           new Rule(
               "client", "Add Camunda's starter camunda-bpm-spring-boot-starter-external-task-client, which reads "
                   + "these keys, or remove the key."),
@@ -169,9 +172,12 @@ final class OperatonVersionOneKeys {
   private static final List<String> WRITTEN_BY_THE_STARTER = List.of("version", "is-enterprise", "formatted-version");
 
   /**
-   * The keys which the webapps module reads, where it is on the classpath.
+   * The keys below <code>camunda.bpm.</code> which the webapps module reads, where it is on the
+   * classpath. None: Operaton's web applications and the module read Operaton's names,
+   * <code>operaton.bpm.webapp.*</code> and <code>operaton.bpm.enabled</code>.
+   * <code>OperatonWebappsVersionOneKeysTest</code> in the webapps module shows both.
    */
-  private static final List<String> READ_BY_THE_WEBAPPS_MODULE = List.of("webapp", "enabled");
+  private static final List<String> READ_BY_THE_WEBAPPS_MODULE = List.of();
 
   /**
    * The keys which Camunda's starter of the external task client reads, where it is on the

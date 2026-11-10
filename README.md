@@ -138,14 +138,19 @@ vanillabp:
 ```
 
 The keys are the ones of the Camunda 7 adapter, at `vanillabp.adapters.<id>.*`:
-`database-schema-update`, `history-time-to-live`, `data-source-name`, `table-prefix`,
+`database-schema-update`, `history-time-to-live`, `history-level`, `data-source-name`, `table-prefix`,
 `serialization-format`, `engine-plugins`, `tenant-id`, `accept-unscoped-identifiers`,
-`allow-listeners`, `sleep-until-something-is-due` and `db-metrics-reporting`. None of them names
-Camunda, so none of them changed. `message-time-to-live` is not one of them: it names no adapter
+`allow-listeners`, `allow-plugins-to-change-adapter-settings`, `sleep-until-something-is-due` and
+`db-metrics-reporting`. None of them names Camunda, so none of them changed. `message-time-to-live` is not one of them: it names no adapter
 and is set for a workflow module, a workflow or a message
 (`vanillabp.workflow-modules.<workflow-module-id>.message-time-to-live`, see
 [decision 54 of the Camunda 7 adapter](https://github.com/vanillabp/camunda7-adapter/blob/main/DECISIONS.md#54-addendum-to-decision-53-the-platform-resolves-the-message-time-to-live)). The adapter reads none of Operaton's own keys (`operaton.bpm.*`,
-`quarkus.operaton.*`), because it does not use Operaton's starter or extension. The
+`quarkus.operaton.*`), because it does not use Operaton's starter or extension. On Spring Boot a key of Camunda's starter
+(`camunda.bpm.*`), which an application of the Camunda 7 adapter of VanillaBP 1 may still have, ends
+the start, as with the Camunda 7 adapter. With the webapps module, `camunda.bpm.webapp.*` and
+`camunda.bpm.enabled` end it as well, because Operaton's web applications read `operaton.bpm.*`.
+A `DataSource` bean `camundaBpmDataSource` keeps its Camunda name and works as with the Camunda 7
+adapter. The
 [Configuration page of the wiki](https://github.com/vanillabp/operaton-adapter/wiki/Configuration)
 describes each key.
 
