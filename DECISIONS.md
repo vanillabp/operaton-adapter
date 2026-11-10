@@ -124,19 +124,23 @@ The recipe `rewrite/vanillabp-operaton.yml` writes all of these names, so a sync
 ### 6. A deployment of the Camunda 7 adapter counts as one of this adapter's own
 
 Operaton runs on the database of Camunda 7.24 as it is. So an application can stop on Camunda 7
-and start again on Operaton, on the same database. The Camunda 7 adapter marks its deployments with
-the source `camunda7:<adapter id>`, and this adapter marks them `operaton:<adapter id>`. A check
-tells this adapter's own deployments from those of somebody else by that source. After the switch,
-every deployment in the database carries the old mark.
+and start again on Operaton, on the same database. Both adapters write the source
+`<adapter id>:<workflow module id>` into a deployment (decision 17 in the Camunda 7 adapter's
+DECISIONS.md). A check tells the deployments of a VanillaBP adapter from those of somebody else by
+that form. So a deployment of the Camunda 7 adapter counts as this adapter's own, and a check which
+reports who else holds a process does not blame the application's own earlier deployments.
 
-So this adapter reads both marks as "deployed by VanillaBP". A check which reports who else holds a
-process then does not blame the application's own earlier deployments.
-
-The first start after the switch deploys a new version of every process, because the source
-differs and the engine's duplicate filter compares it, and because the generated XML differs.
-Running workflows stay on the version they started on and finish there.
+The first start after the switch keeps the adapter id, so it writes the same source. Both adapters
+prepare a model the same way, so the XML is the same as well. The engine's duplicate filter compares
+both and deploys nothing new. Running workflows go on, on the deployment the Camunda 7 adapter made.
 `OperatonInPlaceSwitchFromCamunda7IT` starts a workflow on the Camunda 7 adapter and finishes it on
 this one. See [Migrating from Camunda 7](./README.md#migrating-from-camunda-7).
+
+*Changed on 2026-11-10 by the sync of Camunda 7 commit 10b7bad. Before, the Camunda 7 adapter wrote
+`camunda7:<adapter id>` and this adapter `operaton:<adapter id>`. So this adapter read both marks as
+its own, and the first start after the switch deployed a new version of every process. The Camunda 7
+adapter changed the source in its decision 17. Now both adapters write the same source, so the second
+mark and the new version are gone. What the entry decides stays the same.*
 
 ### 7. The tests with the Camunda 7 adapter are a module of their own
 

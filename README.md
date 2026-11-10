@@ -50,15 +50,14 @@ The decisions the generated code cites are those of the Camunda 7 adapter. The c
 
 What differs from the Camunda 7 adapter:
 
-|        Where        |         Camunda 7 adapter          |                      This adapter                       |
-|---------------------|------------------------------------|---------------------------------------------------------|
-| engine              | Camunda 7.24, `org.camunda.bpm`    | Operaton 2.x, `org.operaton.bpm`                        |
-| adapter type        | `camunda7`                         | `operaton`                                              |
-| artifacts           | `io.vanillabp:camunda7-adapter...` | `io.vanillabp:operaton-adapter...`                      |
-| BPMN namespace      | `camunda:`                         | `operaton:` and `camunda:`, see below                   |
-| web applications    | `/camunda`, `camunda.bpm.*`        | `/operaton`, `operaton.bpm.*`                           |
-| expression language | Camunda's own copy of the EL API   | the real `jakarta.el` API, EL 6                         |
-| deployment source   | `camunda7:<id>`                    | `operaton:<id>`, and `camunda7:<id>` is read as its own |
+|        Where        |         Camunda 7 adapter          |             This adapter              |
+|---------------------|------------------------------------|---------------------------------------|
+| engine              | Camunda 7.24, `org.camunda.bpm`    | Operaton 2.x, `org.operaton.bpm`      |
+| adapter type        | `camunda7`                         | `operaton`                            |
+| artifacts           | `io.vanillabp:camunda7-adapter...` | `io.vanillabp:operaton-adapter...`    |
+| BPMN namespace      | `camunda:`                         | `operaton:` and `camunda:`, see below |
+| web applications    | `/camunda`, `camunda.bpm.*`        | `/operaton`, `operaton.bpm.*`         |
+| expression language | Camunda's own copy of the EL API   | the real `jakarta.el` API, EL 6       |
 
 ## Documentation and supported platforms
 
@@ -343,12 +342,12 @@ of a table. With `database-schema-update: true`, the default, the first start wr
 `false`, run Operaton's script `operaton-engine-2.2.0.jar!/org/operaton/bpm/engine/db/upgrade/<database>_engine_7.24_to_7.25.sql`
 first.
 
-The first start deploys a **new version of every process**. The deployments of the Camunda 7
-adapter carry the source `camunda7:<id>`, this adapter's carry `operaton:<id>`, and the engine's
-duplicate filter compares the source. Running workflows stay on their version and finish there. This
-adapter reads both sources as its own, so its checks do not report the old deployments as somebody
-else's (decision 6 in the repository's DECISIONS.md). `OperatonInPlaceSwitchFromCamunda7IT` starts
-a workflow on the Camunda 7 adapter and finishes it here.
+The first start deploys **nothing new**. Both adapters write the source `<id>:<workflow module id>`
+into a deployment and prepare a model the same way, so the engine's duplicate filter finds the
+deployments of the Camunda 7 adapter unchanged. Running workflows go on, on those deployments. This
+adapter reads them as its own, so its checks do not report them as somebody else's (decision 6 in
+the repository's DECISIONS.md). `OperatonInPlaceSwitchFromCamunda7IT` starts a workflow on the
+Camunda 7 adapter and finishes it here.
 
 Data which names a Camunda class stays as it is. That is, for example, a Java object which the
 engine stored serialized, or a script which names `org.camunda` classes. Operaton tracks this as
