@@ -137,12 +137,16 @@ public class OperatonWorkflowLifecycleTest {
   private static Map<String, Object> object(
       final String path) {
 
+    // read with JsonPath, not with Jackson: Operaton's FEEL engine brings
+    // jackson-module-scala, RestAssured registers every Jackson module it finds, and a JSON
+    // array would then arrive as a Scala list, which is no java.util.List
     return api()
         .get(path)
         .then()
         .statusCode(200)
         .extract()
-        .as(Map.class);
+        .jsonPath()
+        .getMap("$");
 
   }
 

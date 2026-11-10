@@ -199,7 +199,10 @@ public class OperatonOldProcessVersionsTest {
         .then()
         .statusCode(200)
         .extract()
-        .as(Map.class);
+        // JsonPath, not Jackson: Operaton's FEEL engine brings jackson-module-scala, which
+        // RestAssured registers, and the lists below would arrive as Scala lists
+        .jsonPath()
+        .getMap("$");
     assertEquals(Boolean.TRUE, jobExecutor.get("deploymentAware"),
         "the engine works deployment-aware, as in version 1");
     final var ofTheWorkflowModule = (List<String>) jobExecutor.get("ofTheWorkflowModule");
