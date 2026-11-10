@@ -1,10 +1,13 @@
 package io.vanillabp.operaton.springboot.processservice;
 
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.context.properties.ConfigurationPropertiesBindHandlerAdvisor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 
 import io.vanillabp.operaton.springboot.OperatonAdapterBeanRegistrar;
+import io.vanillabp.operaton.springboot.OperatonEmptySections;
 import io.vanillabp.operaton.springboot.VanillaBpOperatonProperties;
 
 /**
@@ -25,11 +28,24 @@ import io.vanillabp.operaton.springboot.VanillaBpOperatonProperties;
 public class OperatonProcessServiceConfiguration {
 
   /**
-   * Spring Boot builds the class to apply the annotations above. It declares no bean
-   * method of its own. The beans of this adapter are registered per configured adapter id,
-   * and only the registrar can do that.
+   * Spring Boot builds the class to apply the annotations above. The beans of this
+   * adapter are registered per configured adapter id, and only the registrar can do that.
    */
   public OperatonProcessServiceConfiguration() {
+
+  }
+
+  /**
+   * Keeps the keys which other property sources set below a section of this adapter
+   * written as <code>{}</code> in a YAML file. Without it, the empty section hides them.
+   *
+   * @return The advisor Spring Boot applies when it binds {@link VanillaBpOperatonProperties}
+   * @see OperatonEmptySections
+   */
+  @Bean
+  public static ConfigurationPropertiesBindHandlerAdvisor operatonEmptySectionsKeepTheirKeys() {
+
+    return OperatonEmptySections.advisor();
 
   }
 

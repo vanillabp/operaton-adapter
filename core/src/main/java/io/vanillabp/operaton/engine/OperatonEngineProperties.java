@@ -14,6 +14,8 @@ package io.vanillabp.operaton.engine;
  *       live. Camunda 7.24 rejects the deployment of a process without one. Default
  *       <code>P180D</code>. A process may override it with
  *       <code>camunda:historyTimeToLive</code>.</li>
+ *   <li><code>history-level</code> - how much history the engine writes. Default
+ *       <code>full</code>, as in VanillaBP 1. See {@link OperatonHistoryLevel}.</li>
  *   <li><code>data-source-name</code> - OPTIONAL. The name of the datasource this adapter
  *       id's embedded engine runs on. The application or the runtime provides it. Setting
  *       up datasources is on purpose NOT VanillaBP's job, and the adapter never builds its
@@ -56,6 +58,10 @@ package io.vanillabp.operaton.engine;
  *   <li><code>dmn-feel-legacy-behavior</code> - OPTIONAL. The engine evaluates decisions with
  *       its older FEEL implementation, which needs no FEEL engine library. Default
  *       <code>false</code>, see {@link OperatonDmnFeelLegacyBehavior}.</li>
+ *   <li><code>allow-plugins-to-change-adapter-settings</code> - OPTIONAL. Whether an engine
+ *       plugin of the application may change a setting which the adapter sets itself. Then
+ *       the start goes on with a WARN per changed setting. Default <code>false</code>, which
+ *       ends the start. See {@link OperatonAdapterSettingsGuard}.</li>
  * </ul>
  */
 public class OperatonEngineProperties {
@@ -73,6 +79,14 @@ public class OperatonEngineProperties {
 
   /** The engine-wide default history time to live. */
   private String historyTimeToLive = "P180D";
+
+  /**
+   * How much history the engine writes: <code>none</code>, <code>activity</code>,
+   * <code>audit</code>, <code>full</code>, <code>auto</code> or the name of a level an engine
+   * plugin adds. The engine stores it in the database on its first start, and a later start
+   * with another level fails. See {@link OperatonHistoryLevel}.
+   */
+  private String historyLevel = OperatonHistoryLevel.DEFAULT;
 
   /** The name of the datasource this adapter id's engine runs on. */
   private String dataSourceName;
@@ -176,6 +190,18 @@ public class OperatonEngineProperties {
   private boolean dmnFeelLegacyBehavior = false;
 
   /**
+   * Whether an engine plugin of the application may change a setting which the adapter sets
+   * itself, like the id generator or {@code jobExecutorDeploymentAware}. Default
+   * <code>false</code>: such a change ends the start, and the message names the setting and
+   * the plugin. With <code>true</code> each change gets a WARN, and the start goes on. See
+   * {@link OperatonAdapterSettingsGuard}.
+   * <p>
+   * There is only this adapter level. The settings belong to the engine, and one engine
+   * serves every workflow module of the adapter id.
+   */
+  private boolean allowPluginsToChangeAdapterSettings = false;
+
+  /**
    * What the engine does to its schema on boot, e.g. <code>true</code>,
    * <code>false</code> or <code>create-drop</code>.
    *
@@ -213,6 +239,25 @@ public class OperatonEngineProperties {
   public void setHistoryTimeToLive(
       final String historyTimeToLive) {
     this.historyTimeToLive = historyTimeToLive;
+  }
+
+  /**
+   * How much history the engine writes.
+   *
+   * @return The configured level, <code>full</code> unless a deployment says otherwise
+   */
+  public String getHistoryLevel() {
+    return historyLevel;
+  }
+
+  /**
+   * How much history the engine writes.
+   *
+   * @param historyLevel The name of a history level, or <code>auto</code>
+   */
+  public void setHistoryLevel(
+      final String historyLevel) {
+    this.historyLevel = historyLevel;
   }
 
   /**
@@ -406,6 +451,25 @@ public class OperatonEngineProperties {
   public void setDmnFeelLegacyBehavior(
       final boolean dmnFeelLegacyBehavior) {
     this.dmnFeelLegacyBehavior = dmnFeelLegacyBehavior;
+  }
+
+  /**
+   * Whether an engine plugin may change a setting which the adapter sets itself.
+   *
+   * @return Whether a change only gets a WARN instead of ending the start
+   */
+  public boolean isAllowPluginsToChangeAdapterSettings() {
+    return allowPluginsToChangeAdapterSettings;
+  }
+
+  /**
+   * Whether an engine plugin may change a setting which the adapter sets itself.
+   *
+   * @param allowPluginsToChangeAdapterSettings Whether a change only gets a WARN
+   */
+  public void setAllowPluginsToChangeAdapterSettings(
+      final boolean allowPluginsToChangeAdapterSettings) {
+    this.allowPluginsToChangeAdapterSettings = allowPluginsToChangeAdapterSettings;
   }
 
   /**

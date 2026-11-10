@@ -303,6 +303,17 @@ public interface VanillaBpOperatonProperties {
     Optional<String> historyTimeToLive();
 
     /**
+     * How much history the engine writes: <code>none</code>, <code>activity</code>,
+     * <code>audit</code>, <code>full</code>, <code>auto</code> or the name of a level an engine
+     * plugin adds. The default is <code>full</code>, the same as on Spring Boot. The engine
+     * stores the level in the database on its first start, and a later start with another
+     * level fails. See {@code OperatonHistoryLevel}.
+     *
+     * @return The configured level, empty for the default
+     */
+    Optional<String> historyLevel();
+
+    /**
      * OPTIONAL name of a declared Quarkus datasource
      * (<code>quarkus.datasource.&lt;name&gt;.*</code>) which this adapter id's embedded
      * engine runs on. Without it the engine shares the application's default datasource.
@@ -407,6 +418,15 @@ public interface VanillaBpOperatonProperties {
      * @return The configured answer, empty for <code>false</code>
      */
     Optional<Boolean> dmnFeelLegacyBehavior();
+
+    /**
+     * OPTIONAL: whether an engine plugin of the application may change a setting which the
+     * adapter sets itself. Then each change gets a WARN, and the start goes on. The default
+     * is <code>false</code>, which ends the start. See {@code OperatonAdapterSettingsGuard}.
+     *
+     * @return The configured answer, empty for <code>false</code>
+     */
+    Optional<Boolean> allowPluginsToChangeAdapterSettings();
 
   }
 

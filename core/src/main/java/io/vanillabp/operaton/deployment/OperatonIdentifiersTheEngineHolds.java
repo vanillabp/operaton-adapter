@@ -13,6 +13,7 @@ import org.operaton.bpm.engine.repository.ResourceDefinition;
 import io.vanillabp.integration.adapter.spi.NameClashAvoidanceSupport;
 import io.vanillabp.integration.adapter.spi.NameClashAvoidanceSupport.IdentifierHeldElsewhere;
 import io.vanillabp.integration.adapter.spi.NameClashAvoidanceSupport.ScopedIdentifierKind;
+import io.vanillabp.operaton.wiring.OperatonDeploymentSource;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -374,7 +375,8 @@ public final class OperatonIdentifiersTheEngineHolds {
         final Deployment deployment) {
 
       final var source = deployment.getSource();
-      final var deployedByAVanillaBpAdapter = deployedByThisAdapterOrItsCamunda7Predecessor(source);
+      final var deployedByAVanillaBpAdapter = OperatonDeploymentSource
+          .writtenByAVanillaBpAdapter(deployment.getName(), source);
       final var heldBy = "Operaton deployment '%s' (source '%s', deployed at %s)"
           .formatted(
               deployment.getName() != null

@@ -187,6 +187,11 @@ public class OperatonAdapterProducer {
               engine
                   .getProcessEngine()
                   .getIdentityService());
+          // where every version of a workflow module is registered with the job executor
+          deploymentService.setManagementService(
+              engine
+                  .getProcessEngine()
+                  .getManagementService());
           // How many workflows still run on an older version
           deploymentService.setRuntimeService(
               engine
