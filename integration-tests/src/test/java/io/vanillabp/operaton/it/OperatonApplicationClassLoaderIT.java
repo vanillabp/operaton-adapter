@@ -155,21 +155,32 @@ public class OperatonApplicationClassLoaderIT {
             .getLocation()
             .toURI())
         .toString();
-    // Operaton annotates its delegate interfaces with JSpecify's @Nullable. A newer javac stops
-    // with "cannot access Nullable" if the annotation is missing from the class path, so it goes
-    // on the class path next to the engine.
-    final var nullableJar = Path
-        .of(org.jspecify.annotations.Nullable.class
+    // Operaton annotates its delegate interfaces with JSpecify's @Nullable, also on methods which
+    // return a TypedValue of operaton-commons-typed-values. The javac of JDK 25 stops when it
+    // cannot attach such an annotation, so both jars go on the class path next to the engine.
+    final var classPath = String.join(
+        java.io.File.pathSeparator,
+        engineJar,
+        jarOf(org.jspecify.annotations.Nullable.class),
+        jarOf(org.operaton.bpm.engine.variable.value.TypedValue.class));
+    final var result = ToolProvider
+        .getSystemJavaCompiler()
+        .run(null, null, null, "-classpath", classPath, "-d", classes.toString(), source.toString());
+    assertEquals(0, result, "the delegate did not compile");
+
+  }
+
+
+  private static String jarOf(
+      final Class<?> type) throws URISyntaxException {
+
+    return Path
+        .of(type
             .getProtectionDomain()
             .getCodeSource()
             .getLocation()
             .toURI())
         .toString();
-    final var classPath = engineJar + java.io.File.pathSeparator + nullableJar;
-    final var result = ToolProvider
-        .getSystemJavaCompiler()
-        .run(null, null, null, "-classpath", classPath, "-d", classes.toString(), source.toString());
-    assertEquals(0, result, "the delegate did not compile");
 
   }
 
