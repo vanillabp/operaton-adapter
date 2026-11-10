@@ -155,9 +155,20 @@ public class OperatonApplicationClassLoaderIT {
             .getLocation()
             .toURI())
         .toString();
+    // Operaton annotates its delegate interfaces with JSpecify's @Nullable. A newer javac stops
+    // with "cannot access Nullable" if the annotation is missing from the class path, so it goes
+    // on the class path next to the engine.
+    final var nullableJar = Path
+        .of(org.jspecify.annotations.Nullable.class
+            .getProtectionDomain()
+            .getCodeSource()
+            .getLocation()
+            .toURI())
+        .toString();
+    final var classPath = engineJar + java.io.File.pathSeparator + nullableJar;
     final var result = ToolProvider
         .getSystemJavaCompiler()
-        .run(null, null, null, "-classpath", engineJar, "-d", classes.toString(), source.toString());
+        .run(null, null, null, "-classpath", classPath, "-d", classes.toString(), source.toString());
     assertEquals(0, result, "the delegate did not compile");
 
   }
