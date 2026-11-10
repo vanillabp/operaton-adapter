@@ -2,12 +2,12 @@ package io.vanillabp.operaton.springboot;
 
 import java.util.List;
 
+import org.camunda.bpm.client.ExternalTaskClient;
+import org.camunda.bpm.client.spring.boot.starter.ClientProperties;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.operaton.bpm.client.ExternalTaskClient;
-import org.operaton.bpm.client.spring.boot.starter.ClientProperties;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -24,6 +24,9 @@ import io.vanillabp.operaton.springboot.processservice.OperatonProcessServiceCon
  * engine. With the starter on the classpath these keys stay. This module has the starter as a
  * test dependency, so the adapter finds it here by the name of {@link ClientProperties}. This
  * test goes red if that class is renamed, because then the keys below end the start.
+ * <p>
+ * The test uses Camunda's starter, not Operaton's. Operaton's starter reads
+ * <code>operaton.bpm.client.*</code>, and the adapter does not check those keys at all.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class OperatonExternalTaskClientVersionOneKeysTest {
@@ -36,7 +39,7 @@ public class OperatonExternalTaskClientVersionOneKeysTest {
           AutoConfigurations.of(
               org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration.class,
               org.springframework.boot.jdbc.autoconfigure.DataSourceTransactionManagerAutoConfiguration.class,
-              org.operaton.bpm.client.spring.boot.starter.impl.ClientAutoConfiguration.class,
+              org.camunda.bpm.client.spring.boot.starter.impl.ClientAutoConfiguration.class,
               OperatonAdapterConfiguration.class,
               OperatonProcessServiceConfiguration.class,
               WorkflowModuleAutoConfiguration.class,
