@@ -26,8 +26,28 @@ final class MigrationContexts {
       final String database,
       final Map<String, Object> adapters) {
 
+    return boot(database, adapters, Map.of());
+
+  }
+
+  /**
+   * @param database The H2 database of the application, its aggregates and its default
+   *          datasource
+   * @param adapters The adapter configuration, as properties below <code>vanillabp.</code>
+   * @param application More properties of the application, with their full names. They win
+   *          over the ones this class sets
+   * @return The running application
+   */
+  static ConfigurableApplicationContext boot(
+      final String database,
+      final Map<String, Object> adapters,
+      final Map<String, Object> application) {
+
     final var properties = new LinkedHashMap<String, Object>();
     properties.put("spring.datasource.url", "jdbc:h2:mem:%s;DB_CLOSE_DELAY=-1".formatted(database));
+    // the web applications of the Camunda 7 adapter are on the classpath. Only the test
+    // which is about them serves them
+    properties.put("spring.main.web-application-type", "none");
     // the aggregates have to survive the end of one application and the start of the next
     properties.put("spring.jpa.hibernate.ddl-auto", "update");
     properties.put("spring.main.banner-mode", "off");
@@ -39,6 +59,7 @@ final class MigrationContexts {
         key,
         value) -> properties.put("vanillabp."
             + key, value));
+    properties.putAll(application);
     return new SpringApplicationBuilder(MigrationTestApplication.class)
         .properties(properties)
         .run();

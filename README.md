@@ -148,6 +148,10 @@ and is set for a workflow module, a workflow or a message
 (`camunda.bpm.*`), which an application of the Camunda 7 adapter of VanillaBP 1 may still have, ends
 the start, as with the Camunda 7 adapter. With the webapps module, `camunda.bpm.webapp.*` and
 `camunda.bpm.enabled` end it as well, because Operaton's web applications read `operaton.bpm.*`.
+During a move from Camunda 7, `camunda7-adapter-spring-boot-webapps` sets `camunda.bpm.enabled` to
+`false` as its default. That does not end the start, because the check skips the property sources
+which a webapps module of VanillaBP adds. The same key written by the application still ends it.
+`OperatonNextToTheCamunda7WebappsIT` tests both.
 A `DataSource` bean `camundaBpmDataSource` keeps its Camunda name and works as with the Camunda 7
 adapter. The
 [Configuration page of the wiki](https://github.com/vanillabp/operaton-adapter/wiki/Configuration)
