@@ -1,0 +1,7 @@
+vanillabp:
+  adapters:
+    operaton: {}
+  workflow-modules:
+    loans:
+      adapters:
+        operaton: {}

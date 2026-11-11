@@ -60,6 +60,21 @@
       </exclusions>
     </dependency>
     <dependency>
+      <!-- the web applications of the Camunda 7 adapter, as an application has them during
+           the move to Operaton. See OperatonNextToTheCamunda7WebappsIT. Its FEEL engine goes
+           for the same reason as above. -->
+      <groupId>io.vanillabp</groupId>
+      <artifactId>camunda7-adapter-spring-boot-webapps</artifactId>
+      <version>${camunda7-adapter.version}</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.camunda.feel</groupId>
+          <artifactId>feel-engine</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
       <scope>provided</scope>
