@@ -10,12 +10,14 @@ import org.operaton.bpm.engine.RepositoryService;
 import org.operaton.bpm.engine.RuntimeService;
 import org.springframework.beans.factory.BeanRegistrar;
 import org.springframework.beans.factory.BeanRegistry;
+import org.springframework.boot.context.properties.bind.Bindable;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.core.env.Environment;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import io.vanillabp.integration.adapter.AdapterBeanRegistrarSupport;
 import io.vanillabp.integration.adapter.spi.workflowtask.WorkflowTaskInvoker;
+import io.vanillabp.integration.config.EmptySections;
 import io.vanillabp.operaton.deployment.OperatonDeploymentService;
 import io.vanillabp.operaton.engine.OperatonEngineProperties;
 import io.vanillabp.operaton.engine.OperatonInstanceIdentity;
@@ -269,23 +271,28 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
    * Binds the adapter id's engine settings from the canonical per-adapter location
    * <code>vanillabp.adapters.&lt;id&gt;.*</code> (the overlay view, see
    * {@link VanillaBpOperatonProperties}). A section written as <code>{}</code> keeps the
-   * keys other property sources set below it, see {@link OperatonEmptySections}.
+   * keys other property sources set below it, because the platform's
+   * {@link EmptySections#bindHandler()} takes part in the binding.
    */
-  private static OperatonEngineProperties enginePropertiesFor(
+  static OperatonEngineProperties enginePropertiesFor(
       final Environment environment,
       final String adapterId) {
 
     return Binder
         .get(environment)
-        .bind("vanillabp.adapters.%s".formatted(adapterId),
-            OperatonEmptySections.section(OperatonEngineProperties.class))
+        .bind(
+            "vanillabp.adapters.%s".formatted(adapterId),
+            Bindable.of(OperatonEngineProperties.class),
+            EmptySections.bindHandler())
         .orElseGet(OperatonEngineProperties::new);
 
   }
 
   /**
    * The names of every property a configuration file or a property source with a list of
-   * names holds. A source which cannot list its names is skipped.
+   * names holds. A source which cannot list its names is skipped. So is a source which a
+   * webapps module of VanillaBP adds itself, see
+   * {@link OperatonVersionOneKeys#isAddedByAWebappsModule}.
    */
   private static List<String> propertyNames(
       final Environment environment) {
@@ -297,6 +304,7 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
         .getPropertySources()
         .stream()
         .filter(org.springframework.core.env.EnumerablePropertySource.class::isInstance)
+        .filter(source -> !OperatonVersionOneKeys.isAddedByAWebappsModule(source.getName()))
         .flatMap(source -> java.util.Arrays
             .stream(((org.springframework.core.env.EnumerablePropertySource<?>) source).getPropertyNames()))
         .toList();
