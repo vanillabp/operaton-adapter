@@ -51,8 +51,9 @@ public class OperatonIdentifiersTheEngineHoldsTest {
    * foreign deployment from this application's own history. The source says how sure the
    * adapter can be about a deployment which carries another name.
    */
-  private static final String OUR_SOURCE = "operaton:"
-      + ADAPTER_ID;
+  private static final String OUR_SOURCE = ADAPTER_ID
+      + ":"
+      + MODULE;
 
   private ProcessEngine engine;
 
@@ -265,7 +266,7 @@ public class OperatonIdentifiersTheEngineHoldsTest {
   @DisplayName("Another adapter id of a VanillaBP application is reported, but not as certainly foreign")
   public void anotherAdapterIdIsReportedWithoutCertainty() {
 
-    deployedBySomebodyElse("another-module", "operaton:the-other-engine", null, java.util.Map
+    deployedBySomebodyElse("another-module", "the-other-engine:another-module", null, java.util.Map
         .of("loan-approval.bpmn", bpmnOf(PROCESS_ID)));
     final var scoping = unscoped();
 
@@ -279,29 +280,6 @@ public class OperatonIdentifiersTheEngineHoldsTest {
         scoping.getHeldElsewhere().getFirst().certainlyForeign(),
         "a second adapter id is what a migration between two engines looks like, and another "
             + "workflow module writes its own name too, so this may well be the same application");
-
-  }
-
-  @Test
-  @DisplayName("A deployment of the Camunda 7 adapter on the same database is not certainly foreign either")
-  public void aDeploymentOfTheCamunda7AdapterIsNotCertainlyForeign() {
-
-    // what an application leaves behind which ran on the Camunda 7 adapter with this id,
-    // and then switched its database over to Operaton (see decision 6 in the repository's
-    // DECISIONS.md)
-    deployedBySomebodyElse("another-module", "camunda7:"
-        + ADAPTER_ID, null, java.util.Map.of("loan-approval.bpmn", bpmnOf(PROCESS_ID)));
-    final var scoping = unscoped();
-
-    deployOurModule(scoping, false);
-
-    assertEquals(
-        java.util.List.of(PROCESS_ID),
-        scoping.heldElsewhereOfKind(ScopedIdentifierKind.BPMN_PROCESS_ID),
-        "another workflow module still holds the id, so it is worth a line");
-    assertFalse(
-        scoping.getHeldElsewhere().getFirst().certainlyForeign(),
-        "the Camunda 7 adapter wrote it, so it may be this very application before its switch");
 
   }
 

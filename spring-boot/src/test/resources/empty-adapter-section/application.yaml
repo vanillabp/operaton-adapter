@@ -1,0 +1,10 @@
+vanillabp:
+  prioritized-adapters:
+    - operaton
+  adapters:
+    operaton: {}
+  workflow-modules:
+    c7-smoke-test:
+      adapters:
+        operaton:
+          resources-location: classpath*:c7-smoke-test/processes

@@ -103,4 +103,19 @@ class OperatonIntegrationProcessor {
 
   }
 
+  /**
+   * Keeps the engine plugins of the application alive, for the same reason as the engine
+   * customizers. Without this a plugin bean was removed without a word, and the engine was
+   * built without it. {@code OperatonPluginChangingAnAdapterSettingTest} has such a bean.
+   *
+   * @return What must not be removed
+   */
+  @BuildStep
+  io.quarkus.arc.deployment.UnremovableBeanBuildItem keepEnginePlugins() {
+
+    return io.quarkus.arc.deployment.UnremovableBeanBuildItem
+        .beanTypes(org.operaton.bpm.engine.impl.cfg.ProcessEnginePlugin.class);
+
+  }
+
 }

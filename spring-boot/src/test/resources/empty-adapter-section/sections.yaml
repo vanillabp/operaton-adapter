@@ -1,0 +1,12 @@
+vanillabp:
+  adapters:
+    operaton: {}
+  workflow-modules:
+    loans:
+      adapters:
+        operaton: {}
+---
+vanillabp:
+  adapters:
+    operaton:
+      history-time-to-live: P2D

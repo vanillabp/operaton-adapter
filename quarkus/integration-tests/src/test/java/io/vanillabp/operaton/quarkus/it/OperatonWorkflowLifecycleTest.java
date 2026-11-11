@@ -137,12 +137,16 @@ public class OperatonWorkflowLifecycleTest {
   private static Map<String, Object> object(
       final String path) {
 
+    // read with JsonPath, not with Jackson: Operaton's FEEL engine brings
+    // jackson-module-scala, RestAssured registers every Jackson module it finds, and a JSON
+    // array would then arrive as a Scala list, which is no java.util.List
     return api()
         .get(path)
         .then()
         .statusCode(200)
         .extract()
-        .as(Map.class);
+        .jsonPath()
+        .getMap("$");
 
   }
 
@@ -343,6 +347,26 @@ public class OperatonWorkflowLifecycleTest {
             .stream()
             .anyMatch(definition -> definition.startsWith("SignalCatchProcess|")),
         definitions.toString());
+
+  }
+
+  @Test
+  @DisplayName("The engine writes the history level 'full' and makes UUIDs, the same as on Spring Boot")
+  @SuppressWarnings("unchecked")
+  public void theEngineHasTheHistoryLevelAndIdsOfSpringBoot() {
+
+    final var reported = object("introspect/engine/history-and-ids");
+
+    assertEquals("full", reported.get("historyLevel"), reported::toString);
+    assertEquals("3", reported.get("storedHistoryLevel"), reported::toString);
+    assertEquals("StrongUuidGenerator", reported.get("idGenerator"), reported::toString);
+    final var deploymentIds = (List<String>) reported.get("deploymentIds");
+    assertFalse(deploymentIds.isEmpty(), reported::toString);
+    deploymentIds
+        .forEach(id -> assertTrue(
+            id.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"),
+            "not a UUID: "
+                + id));
 
   }
 

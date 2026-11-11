@@ -95,6 +95,8 @@
     <spring-boot.version>4.1.2</spring-boot.version>
     <quarkus.version>3.40.1.1</quarkus.version>
     <lombok.version>1.18.48</lombok.version>
+    <!-- the engine's StrongUuidGenerator needs it, and camunda-engine declares it 'provided' -->
+    <java-uuid-generator.version>4.3.0</java-uuid-generator.version>
   </properties>
 
   <dependencyManagement>
@@ -158,6 +160,11 @@
         <artifactId>operaton-engine-spring</artifactId>
         <version>${operaton.version}</version>
       </dependency>
+      <dependency>
+        <groupId>com.fasterxml.uuid</groupId>
+        <artifactId>java-uuid-generator</artifactId>
+        <version>${java-uuid-generator.version}</version>
+      </dependency>
       <!-- Managed here and declared without a version in the three modules which use
            them, so that no POM we publish names '${operaton.version}' where a consumer
            reads a version. Our own build resolved that name because this file is in the
@@ -172,6 +179,11 @@
       <dependency>
         <groupId>org.operaton.bpm.springboot</groupId>
         <artifactId>operaton-bpm-spring-boot-starter-webapp</artifactId>
+        <version>${operaton.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.operaton.bpm.springboot</groupId>
+        <artifactId>operaton-bpm-spring-boot-starter-external-task-client</artifactId>
         <version>${operaton.version}</version>
       </dependency>
       <dependency>

@@ -3,8 +3,6 @@ package io.vanillabp.operaton.migration;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.HashMap;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -67,16 +65,19 @@ public class OperatonInPlaceSwitchFromCamunda7IT {
               .orElse(null),
           "the last task, which only Operaton can have delivered");
 
+      // both adapters write '<adapter id>:<workflow module id>' into the source, and both
+      // prepare the model the same way. So the engine's duplicate filter finds the deployment
+      // of the Camunda 7 adapter unchanged, and Operaton deploys nothing new
       final var repositoryService = engine.getRepositoryService();
       assertEquals(
-          Set.of("camunda7:engine", "operaton:engine"),
+          java.util.List.of("engine:migration"),
           repositoryService.createDeploymentQuery().list().stream().map(deployment -> deployment.getSource())
-              .collect(Collectors.toSet()),
-          "the first start on Operaton deploys again, under this adapter's source");
+              .toList(),
+          "the first start on Operaton keeps the one deployment the Camunda 7 adapter made");
       assertEquals(
-          2,
+          1,
           repositoryService.createProcessDefinitionQuery().processDefinitionKey("MigrationProcess").count(),
-          "so the process has a new version");
+          "so the process has no new version");
       assertEquals(
           1,
           repositoryService.getProcessDefinition(finished.getProcessDefinitionId()).getVersion(),
