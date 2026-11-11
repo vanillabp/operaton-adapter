@@ -218,7 +218,9 @@ public final class OperatonMultiInstances {
    * Where the model names the called process directly, the answer was written onto the call
    * activity while the model was deployed, and it stands. Where the model names the process
    * in an expression, there was nothing to write the answer onto. So the core is asked now,
-   * through the registry of this engine. Without a registry the walk ends there.
+   * through the registry of this engine. Without a registry the walk ends there. The core is
+   * asked the same way for a model version 1 deployed, because nobody wrote an answer into
+   * it either. See decision 22 in the Camunda 7 adapter's DECISIONS.md.
    */
   private static DelegateExecution nextOf(
       final DelegateExecution execution,
@@ -235,9 +237,11 @@ public final class OperatonMultiInstances {
     if (OperatonCallActivities.continuesTheCallersWorkflowAggregate(callActivity)) {
       return callingExecution;
     }
-    if (OperatonCallActivities.theModelSaysWhichProcessIsCalled(callActivity)) {
+    if (OperatonCallActivities.theModelSaysWhichProcessIsCalled(callActivity) && OperatonCallActivities
+        .theNotesOfTheCallingModelCount(callingExecution, taskRegistry)) {
       // the deployment could answer, and its answer was no. The walk keeps that answer,
-      // even where the declarations of the application have changed since
+      // even where the declarations of the application have changed since. A model version
+      // 1 deployed was never asked, so the core answers for it below
       return null;
     }
     return OperatonCallActivities

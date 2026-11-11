@@ -32,7 +32,10 @@ import lombok.extern.slf4j.Slf4j;
  *       point of the embedded adapter: engine state commits or rolls back together with
  *       the business data. If <code>vanillabp.adapters.&lt;id&gt;.data-source-name</code>
  *       is configured, the engine runs on the {@link DataSource} BEAN of that name
- *       instead, which the application provides. Setting up datasources is NOT
+ *       instead, which the application provides. Without that key a bean named
+ *       <code>camundaBpmDataSource</code> takes the place of the default datasource, as
+ *       in version 1 (see {@link OperatonEngineDatabase}, and see decision 60 in the
+ *       Camunda 7 adapter's DECISIONS.md). Setting up datasources is NOT
  *       VanillaBP's job, on purpose. The adapter never builds its own pool. A named
  *       datasource is needed when two engines run side by side for a migration, because
  *       two embedded engines must never share one schema. Engine commands on such a
@@ -57,6 +60,22 @@ import lombok.extern.slf4j.Slf4j;
 @SuppressWarnings("LombokGetterMayBeUsed")
 public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle, ApplicationContextAware, InitializingBean, AutoCloseable {
 
+  /**
+   * The settings the adapter sets on Spring Boot only, which a plugin of the application may
+   * not change without the key. The application context has no getter, so its field is read.
+   */
+  static final java.util.List<io.vanillabp.operaton.engine.OperatonAdapterSettingsGuard.Setting> SETTINGS_ONLY_SPRING_BOOT_HAS = java.util.List
+      .of(
+          io.vanillabp.operaton.engine.OperatonAdapterSettingsGuard.Setting
+              .value(
+                  "applicationContext",
+                  io.vanillabp.operaton.engine.OperatonAdapterSettingsGuard
+                      .fieldOf(SpringProcessEngineConfiguration.class, "applicationContext")),
+          io.vanillabp.operaton.engine.OperatonAdapterSettingsGuard.Setting
+              .value(
+                  "transactionManager",
+                  configuration -> ((SpringProcessEngineConfiguration) configuration).getTransactionManager()));
+
   private final String adapterId;
 
   /**
@@ -70,9 +89,35 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
 
   private final OperatonEngineProperties properties;
 
-  private final DataSource applicationDataSource;
+  /**
+   * The application's default datasource, asked for only where the engine needs it. It is
+   * <code>null</code> for an id which names a datasource.
+   */
+  private final java.util.function.Supplier<DataSource> applicationDataSource;
 
-  private final PlatformTransactionManager applicationTransactionManager;
+  /**
+   * The application's transaction manager, asked for the same way.
+   */
+  private final java.util.function.Supplier<PlatformTransactionManager> applicationTransactionManager;
+
+  /**
+   * Whether the engine runs on a datasource which is not the application's default one. It
+   * follows the datasource the engine really gets, not the key alone. A bean
+   * <code>camundaBpmDataSource</code> makes it true without any key (see decision 60 in the
+   * Camunda 7 adapter's DECISIONS.md). It is known once {@link #afterPropertiesSet()} chose the
+   * datasource.
+   */
+  private boolean ownDataSource;
+
+  /**
+   * What makes this engine a different one from the engine of another adapter id: the
+   * datasource it really runs on and its table prefix. It is built from the datasource the
+   * engine gets, not from the key. An id without <code>data-source-name</code> may run on
+   * a bean <code>camundaBpmDataSource</code>, and an id may name the application's default
+   * datasource by its bean name. Both share a database with another id without the key
+   * saying so. It is known once {@link #afterPropertiesSet()} chose the datasource.
+   */
+  private io.vanillabp.operaton.engine.OperatonInstanceIdentity instanceIdentity;
 
   /**
    * {@code SpringProcessEngineConfiguration} needs it to resolve Spring beans in scripts
@@ -120,10 +165,10 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
    *
    * @param adapterId The adapter id
    * @param properties The adapter id's engine settings
-   * @param applicationDataSource The application's data source (null for an id using
-   *        a named one)
-   * @param applicationTransactionManager The application's transaction manager (null
-   *        for an id using a named data source)
+   * @param applicationDataSource The application's default datasource, asked for only
+   *        where it is needed (null for an id which names a datasource)
+   * @param applicationTransactionManager The application's transaction manager, asked
+   *        for only where it is needed (null for an id which names a datasource)
    * @param workflowTaskInvoker The core's entry point for BPMN tasks
    * @param bpmsInitiatedStartInvoker The core's entry point for workflows the engine
    *        starts on its own (may be <code>null</code> if the core provides none)
@@ -133,8 +178,8 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
   public OperatonEngineHolder(
       final String adapterId,
       final OperatonEngineProperties properties,
-      final DataSource applicationDataSource,
-      final PlatformTransactionManager applicationTransactionManager,
+      final java.util.function.Supplier<DataSource> applicationDataSource,
+      final java.util.function.Supplier<PlatformTransactionManager> applicationTransactionManager,
       final WorkflowTaskInvoker workflowTaskInvoker,
       final io.vanillabp.integration.adapter.spi.workflowstart.BpmsInitiatedStartInvoker bpmsInitiatedStartInvoker,
       final io.vanillabp.integration.adapter.spi.workflowend.WorkflowEndedInvoker workflowEndedInvoker) {
@@ -146,9 +191,6 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
     this.properties = properties;
     this.applicationDataSource = applicationDataSource;
     this.applicationTransactionManager = applicationTransactionManager;
-    // every listener building an invocation context has to know whose transaction it
-    // delivers in, and the datasource this engine was configured with is what decides it
-    this.taskRegistry.setEngineRunsOnItsOwnDataSource(usesSeparateDataSource());
 
   }
 
@@ -253,15 +295,27 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
               + "join the application's transactions; starting workflows uses the two-phase pattern",
           adapterId,
           properties.getDataSourceName());
+      ownDataSource = true;
     } else {
-      dataSource = applicationDataSource;
-      transactionManager = applicationTransactionManager;
+      // a bean camundaBpmDataSource still counts, as in version 1
+      final var database = OperatonEngineDatabase.choose(
+          adapterId, applicationContext, applicationDataSource, applicationTransactionManager);
+      dataSource = database.dataSource();
+      transactionManager = database.transactionManager();
+      ownDataSource = database.ownDataSource();
     }
+    // every listener building an invocation context has to know whose transaction it
+    // delivers in, and the datasource this engine really runs on is what decides it
+    this.taskRegistry.setEngineRunsOnItsOwnDataSource(ownDataSource);
+    this.instanceIdentity = new io.vanillabp.operaton.engine.OperatonInstanceIdentity(
+        nameOfTheDataSource(dataSource), properties.getTablePrefix());
 
     // an adapter id which runs on a table prefix needs its tables to exist. Camunda's
     // schema management ignores the prefix and would create a set of unprefixed ACT_*
-    // tables here. We ask BEFORE the engine is built, so those tables are never written
-    io.vanillabp.operaton.engine.OperatonTablePrefixSchema.validate(adapterId, properties, dataSource);
+    // tables here. We ask BEFORE the engine is built, so those tables are never written.
+    // The message names the datasource the engine really got, camundaBpmDataSource included
+    io.vanillabp.operaton.engine.OperatonTablePrefixSchema.validate(adapterId, properties, dataSource,
+        instanceIdentity.dataSourceName());
 
     // the usual Spring job executor: SpringJobExecutor on a managed thread pool. The
     // engine's default DefaultJobExecutor runs raw threads and starts with the engine
@@ -280,6 +334,11 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
 
     final var configuration = new SpringProcessEngineConfiguration();
     configuration.setApplicationContext(applicationContext);
+    // the engine loads the classes a model names (camunda:class, Java-serialized values,
+    // scripts) through this class loader first. Without it the engine falls back to the
+    // class loader of the calling thread, which does not see the application's classes under
+    // Spring DevTools or on a thread the application did not start. Version 1 did the same
+    configuration.setClassLoader(applicationContext.getClassLoader());
     // VanillaBP task wiring: a top-level EL name which neither a process variable nor a
     // Spring bean answers reaches a @WorkflowTask method. The parse listener sets
     // transaction boundaries like a remote BPMS has them (async before/after)
@@ -304,6 +363,12 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
     configuration.setJobExecutor(this.jobExecutor);
     // activation waits for startWorkflowProcessing (see class comment)
     configuration.setJobExecutorActivate(false);
+    // the job executor fetches only the jobs of deployments registered with this engine, as
+    // in version 1. During a rolling update a node with the old code then leaves the jobs of
+    // a newer version alone. The deployment service registers every version this
+    // application deployed before, so workflows on older versions keep running. See
+    // decision 59 in the Camunda 7 adapter's DECISIONS.md
+    configuration.setJobExecutorDeploymentAware(true);
     // Camunda 7.24 rejects deployments of processes without a history-time-to-live.
     // A default for the whole engine means that BPMN models need not declare it one by
     // one. A process may still override it through camunda:historyTimeToLive.
@@ -361,6 +426,13 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
     // engine library, which is what an application needs next to the Operaton adapter
     io.vanillabp.operaton.engine.OperatonDmnFeelLegacyBehavior.applyTo(adapterId, configuration, properties);
 
+    // the history level and the ids of version 1, whose engine Camunda's Spring Boot starter
+    // built. The engine stores the level in the database and does not start with another
+    // one, so a database of version 1 needs 'full'. See decision 58 in the Camunda 7 adapter's
+    // DECISIONS.md
+    io.vanillabp.operaton.engine.OperatonHistoryLevel.applyTo(adapterId, configuration, properties);
+    configuration.setIdGenerator(new org.operaton.bpm.engine.impl.persistence.StrongUuidGenerator());
+
     // what an extension contributes to THIS engine: parse listeners before or after
     // VanillaBP's own, and a history event handler installed next to the engine's
     io.vanillabp.operaton.engine.OperatonEngineCustomizers
@@ -372,6 +444,16 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
                 .orderedStream()
                 .toList());
 
+    // a plugin of the application runs after everything above. So it could change a
+    // setting the adapter sets itself without anybody noticing. This puts a watch around
+    // the plugins, which names each such change and the plugin which made it
+    io.vanillabp.operaton.engine.OperatonAdapterSettingsGuard
+        .watch(
+            adapterId,
+            configuration,
+            properties.isAllowPluginsToChangeAdapterSettings(),
+            SETTINGS_ONLY_SPRING_BOOT_HAS);
+
     try {
       this.processEngine = configuration.buildProcessEngine();
     } catch (final RuntimeException | LinkageError e) {
@@ -379,6 +461,10 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
       // error. The developer gets the remedy instead of a NoSuchMethodError
       io.vanillabp.operaton.engine.OperatonDmnFeelLegacyBehavior.explainWhyTheEngineDidNotStart(adapterId, properties,
           e);
+      // a history level the engine does not know, or one which differs from the level in
+      // the database. The developer gets the key and the stored level
+      io.vanillabp.operaton.engine.OperatonHistoryLevel.explainWhyTheEngineDidNotStart(adapterId, configuration,
+          properties, e);
       throw e;
     }
     this.jobExecutorLifecycle = new OperatonJobExecutorLifecycle(adapterId, this.jobExecutor);
@@ -410,6 +496,53 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
                   adapterId,
                   String.join(", ", applicationContext.getBeanNamesForType(DataSource.class))), e);
     }
+
+  }
+
+  /**
+   * The bean name of the datasource the engine runs on, so that two adapter ids on one
+   * datasource compare equal whatever their keys say. The application's default datasource
+   * has no name here. It is the one Spring injects by type, and an id without a
+   * <code>data-source-name</code> on it, or with the bean name of it, is the same engine.
+   *
+   * @param dataSource The datasource the engine gets
+   * @return The bean name, or <code>null</code> for the application's default datasource
+   */
+  private String nameOfTheDataSource(
+      final DataSource dataSource) {
+
+    if (applicationContext
+        .getBeanProvider(DataSource.class)
+        .getIfUnique() == dataSource) {
+      return null;
+    }
+    for (final var name : applicationContext.getBeanNamesForType(DataSource.class)) {
+      try {
+        if (applicationContext.getBean(name, DataSource.class) == dataSource) {
+          return name;
+        }
+      } catch (final BeansException e) {
+        // a datasource which cannot be created is not the one the engine got
+      }
+    }
+    // only a datasource which is no bean of this context gets here, and it is the one the
+    // key names
+    return properties.usesSeparateDataSource()
+        ? properties.getDataSourceName()
+        : OperatonEngineDatabase.VERSION_ONE_DATA_SOURCE;
+
+  }
+
+  /**
+   * What makes this engine a different one from the engines of other adapter ids. The
+   * deployment service compares it at startup (see
+   * {@link io.vanillabp.operaton.engine.OperatonInstanceIdentity}).
+   *
+   * @return The datasource the engine really runs on and its table prefix
+   */
+  public io.vanillabp.operaton.engine.OperatonInstanceIdentity getInstanceIdentity() {
+
+    return instanceIdentity;
 
   }
 
@@ -485,12 +618,12 @@ public class OperatonEngineHolder implements OperatonWorkflowProcessingLifecycle
    * datasource an engine command joins the caller's transaction. That guarantee is why
    * people choose an embedded engine. On a named datasource it cannot join.
    *
-   * @return Whether this adapter id's engine runs on a named datasource (see class
-   *         comment)
+   * @return Whether this adapter id's engine runs on a datasource other than the
+   *         application's default one (see class comment)
    */
   public boolean usesSeparateDataSource() {
 
-    return properties.usesSeparateDataSource();
+    return ownDataSource;
 
   }
 

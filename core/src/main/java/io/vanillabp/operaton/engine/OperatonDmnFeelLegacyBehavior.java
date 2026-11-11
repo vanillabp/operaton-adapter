@@ -79,7 +79,7 @@ public final class OperatonDmnFeelLegacyBehavior {
    * @param adapterId The adapter id whose engine did not start
    * @param properties The adapter id's engine settings
    * @param failure What building the engine threw
-   * @throws IllegalStateException If the FEEL engine library did not fit this engine
+   * @throws OperatonStartupExplanation If the FEEL engine library did not fit this engine
    */
   public static void explainWhyTheEngineDidNotStart(
       final String adapterId,
@@ -96,20 +96,21 @@ public final class OperatonDmnFeelLegacyBehavior {
       return;
     }
 
-    throw new IllegalStateException(
+    throw new OperatonStartupExplanation(
         """
             Operaton adapter '%s' could not start its engine, because the FEEL engine library \
             'org.camunda.feel:feel-engine' on the class path does not fit Operaton (%s: %s). \
             This happens when the Operaton adapter runs next to this one, because Operaton brings a \
-            newer version of that library. Do two things: \
-            1) exclude 'org.camunda.feel:feel-engine' from the dependency of the Operaton adapter, \
-            and 2) set 'vanillabp.adapters.%s.dmn-feel-legacy-behavior: true'. Then the Operaton \
-            engine evaluates decisions with its older FEEL implementation, which needs no library."""
+            newer version of that library."""
             .formatted(
                 adapterId,
                 cause.getClass().getSimpleName(),
-                cause.getMessage(),
-                adapterId), failure);
+                cause.getMessage()), """
+                    Do two things: \
+                    1) exclude 'org.camunda.feel:feel-engine' from the dependency of the Operaton adapter, \
+                    and 2) set 'vanillabp.adapters.%s.dmn-feel-legacy-behavior: true'. Then the Operaton \
+                    engine evaluates decisions with its older FEEL implementation, which needs no library."""
+                    .formatted(adapterId), failure);
 
   }
 
