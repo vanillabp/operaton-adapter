@@ -18,8 +18,8 @@
 #      packages, Maven coordinates, the getters of the model API.
 #   4. It lists the type renames and runs VanillaBP's recipe rewrite/vanillabp-operaton.yml.
 #      That one renames what belongs to VanillaBP: the Java package, the classes, the adapter
-#      type, the names in strings. Then it sets the Operaton version of the root POM to the
-#      one of the checkout it runs in.
+#      type, the names in strings. Then it sets the Operaton version and the version of
+#      java-uuid-generator in the root POM to the ones of the checkout it runs in.
 #   5. It formats the result with the Spotless rules of the repository.
 #   6. It commits the result as "generated from C7 <full sha>". It does not push.
 #
@@ -142,6 +142,19 @@ if ! grep -q '<operaton\.version>' "$tree/pom.xml"; then
   exit 1
 fi
 sed -i "s|<operaton\.version>[^<]*</operaton\.version>|<operaton.version>${operaton_version}</operaton.version>|" "$tree/pom.xml"
+
+# java-uuid-generator is the version operaton-engine is built against, and that is not the one
+# of the Camunda 7 adapter. It is taken from main for the same reason as the Operaton version.
+uuid_version=$(sed -n 's|.*<java-uuid-generator\.version>\([^<]*\)</java-uuid-generator\.version>.*|\1|p' "$repository/pom.xml" | head -n 1)
+if [ -z "$uuid_version" ]; then
+  echo "The root POM of $repository names no java-uuid-generator.version, so the sync cannot know the version." >&2
+  exit 1
+fi
+if ! grep -q '<java-uuid-generator\.version>' "$tree/pom.xml"; then
+  echo "The recipes left no java-uuid-generator.version in the root POM of $tree, so the version cannot be set." >&2
+  exit 1
+fi
+sed -i "s|<java-uuid-generator\.version>[^<]*</java-uuid-generator\.version>|<java-uuid-generator.version>${uuid_version}</java-uuid-generator.version>|" "$tree/pom.xml"
 
 # The formatting rules of the repository, applied once here, so that 'main' never has to
 # carry a formatting change of generated code. The recipes write correct code, but not always

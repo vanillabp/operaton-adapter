@@ -35,6 +35,13 @@
       "addLabels": [
         "needs-doc-update"
       ]
+    },
+    {
+      "description": "java-uuid-generator follows the engine, not Renovate. operaton-engine 2.2 is built against 5.2.0 and declares it 'provided', so the adapter brings exactly that version, although the Camunda 7 adapter brings 4.3.0. Raise it together with a new Operaton minor, to the version that operaton-engine names. bin/sync-from-camunda7.sh keeps the version of main.",
+      "matchPackageNames": [
+        "com.fasterxml.uuid:java-uuid-generator"
+      ],
+      "enabled": false
     }
   ]
 }
