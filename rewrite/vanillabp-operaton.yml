@@ -733,9 +733,6 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.springboot.Camunda7AdapterConfiguration
       newFullyQualifiedTypeName: io.vanillabp.camunda7.springboot.OperatonAdapterConfiguration
   - org.openrewrite.java.ChangeType:
-      oldFullyQualifiedTypeName: io.vanillabp.camunda7.springboot.Camunda7EmptySections
-      newFullyQualifiedTypeName: io.vanillabp.camunda7.springboot.OperatonEmptySections
-  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.springboot.Camunda7VersionOneKeys
       newFullyQualifiedTypeName: io.vanillabp.camunda7.springboot.OperatonVersionOneKeys
   - org.openrewrite.java.ChangeType:
