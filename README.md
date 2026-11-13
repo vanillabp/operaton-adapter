@@ -146,7 +146,11 @@ and is set for a workflow module, a workflow or a message
 [decision 54 of the Camunda 7 adapter](https://github.com/vanillabp/camunda7-adapter/blob/main/DECISIONS.md#54-addendum-to-decision-53-the-platform-resolves-the-message-time-to-live)). The adapter reads none of Operaton's own keys (`operaton.bpm.*`,
 `quarkus.operaton.*`), because it does not use Operaton's starter or extension. On Spring Boot a key of Camunda's starter
 (`camunda.bpm.*`), which an application of the Camunda 7 adapter of VanillaBP 1 may still have, ends
-the start, as with the Camunda 7 adapter. With the webapps module, `camunda.bpm.webapp.*` and
+the start, as with the Camunda 7 adapter. A key of Operaton's starter (`operaton.bpm.*`) ends it as
+well, with the same hints. The check comes from the Camunda 7 adapter, and the rule for
+`ENGINE_STARTER_NAME` in `rewrite/vanillabp-operaton.yml` gives it Operaton's name
+(`OperatonStarterKeysTest`). With the webapps module, `operaton.bpm.webapp.*` and
+`operaton.bpm.enabled` stay, because Operaton's web applications and the module read them. With the webapps module, `camunda.bpm.webapp.*` and
 `camunda.bpm.enabled` end it as well, because Operaton's web applications read `operaton.bpm.*`.
 During a move from Camunda 7, `camunda7-adapter-spring-boot-webapps` sets `camunda.bpm.enabled` to
 `false` as its default. That does not end the start, because the check skips the property sources
