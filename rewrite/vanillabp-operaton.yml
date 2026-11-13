@@ -862,6 +862,16 @@ recipeList:
       replace: Operaton
       caseSensitive: true
       regex: true
+  # Operaton's Spring Boot starter reads 'operaton.bpm.*', not 'camunda.bpm.*'. The Camunda 7
+  # adapter keeps the name of its engine's starter in one constant, and its check of the starter
+  # keys reads that name. With 'operaton' there, a left-over 'operaton.bpm.*' key ends the start
+  # like a 'camunda.bpm.*' key, and the keys Operaton's web applications read are left alone
+  # under the right name. OperatonStarterKeysTest fails without this rule.
+  - org.openrewrite.text.FindAndReplace:
+      find: 'ENGINE_STARTER_NAME = "camunda";'
+      replace: 'ENGINE_STARTER_NAME = "operaton";'
+      caseSensitive: true
+      filePattern: '**/*.java'
 ---
 type: specs.openrewrite.org/v1beta/recipe
 name: io.vanillabp.operaton.DecisionsOfTheCamunda7Adapter
