@@ -86,12 +86,13 @@
     <coverage.rule>90</coverage.rule>
     <spi-for-java.version>2.0.0-SNAPSHOT</spi-for-java.version>
     <adapter-platform.version>2.0.0-SNAPSHOT</adapter-platform.version>
-    <operaton.version>2.2.0</operaton.version>
+    <operaton.version>2.2.1</operaton.version>
     <spring-boot.version>4.1.2</spring-boot.version>
     <quarkus.version>3.40.1.1</quarkus.version>
     <lombok.version>1.18.48</lombok.version>
-    <!-- the engine's StrongUuidGenerator needs it, and camunda-engine declares it 'provided' -->
-    <java-uuid-generator.version>4.3.0</java-uuid-generator.version>
+    <!-- the engine's StrongUuidGenerator needs it, and camunda-engine declares it 'provided'.
+         The version is the one camunda-engine is built against, so it moves only with the engine -->
+    <java-uuid-generator.version>5.2.0</java-uuid-generator.version>
   </properties>
 
   <dependencyManagement>

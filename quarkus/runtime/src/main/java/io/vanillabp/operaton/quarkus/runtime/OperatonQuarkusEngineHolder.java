@@ -206,7 +206,7 @@ public class OperatonQuarkusEngineHolder implements OperatonWorkflowProcessingLi
     // Version 1 had no Quarkus adapter, but an application should get the same engine on both
     // platforms. See decision 58 in the Camunda 7 adapter's DECISIONS.md
     io.vanillabp.operaton.engine.OperatonHistoryLevel.applyTo(adapterId, configuration, properties);
-    configuration.setIdGenerator(new org.operaton.bpm.engine.impl.persistence.StrongUuidGenerator());
+    io.vanillabp.operaton.engine.OperatonIdGenerator.applyTo(adapterId, configuration, properties);
     // job-executor threads must load delegate classes through the Quarkus runtime
     // classloader. Otherwise they fail with ClassNotFoundException; we have seen it
     configuration.setClassLoader(Thread.currentThread().getContextClassLoader());
