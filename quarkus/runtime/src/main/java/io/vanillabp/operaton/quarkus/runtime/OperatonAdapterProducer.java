@@ -284,15 +284,11 @@ public class OperatonAdapterProducer {
         .adapters()
         .get(adapterId);
     return new io.vanillabp.operaton.engine.OperatonInstanceIdentity(
-        keys == null
+        OperatonEngineProducer.dataSourceNameOf(keys), keys == null
             ? null
             : keys
-                .dataSourceName()
-                .orElse(null), keys == null
-                    ? null
-                    : keys
-                        .tablePrefix()
-                        .orElse(null));
+                .tablePrefix()
+                .orElse(null));
 
   }
 

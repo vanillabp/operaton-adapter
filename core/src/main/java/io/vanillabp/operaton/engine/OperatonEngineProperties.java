@@ -16,6 +16,9 @@ package io.vanillabp.operaton.engine;
  *       <code>camunda:historyTimeToLive</code>.</li>
  *   <li><code>history-level</code> - how much history the engine writes. Default
  *       <code>full</code>, as in VanillaBP 1. See {@link OperatonHistoryLevel}.</li>
+ *   <li><code>id-generator</code> - how the engine makes its ids: <code>uuid</code> or
+ *       <code>db</code>. Default <code>uuid</code>, as in VanillaBP 1. See
+ *       {@link OperatonIdGenerator}.</li>
  *   <li><code>data-source-name</code> - OPTIONAL. The name of the datasource this adapter
  *       id's embedded engine runs on. The application or the runtime provides it. Setting
  *       up datasources is on purpose NOT VanillaBP's job, and the adapter never builds its
@@ -87,6 +90,12 @@ public class OperatonEngineProperties {
    * with another level fails. See {@link OperatonHistoryLevel}.
    */
   private String historyLevel = OperatonHistoryLevel.DEFAULT;
+
+  /**
+   * How the engine makes its ids: <code>uuid</code> or <code>db</code>. See
+   * {@link OperatonIdGenerator}.
+   */
+  private String idGenerator = OperatonIdGenerator.DEFAULT;
 
   /** The name of the datasource this adapter id's engine runs on. */
   private String dataSourceName;
@@ -258,6 +267,25 @@ public class OperatonEngineProperties {
   public void setHistoryLevel(
       final String historyLevel) {
     this.historyLevel = historyLevel;
+  }
+
+  /**
+   * How the engine makes its ids.
+   *
+   * @return The configured id generator, <code>uuid</code> unless a deployment says otherwise
+   */
+  public String getIdGenerator() {
+    return idGenerator;
+  }
+
+  /**
+   * How the engine makes its ids.
+   *
+   * @param idGenerator <code>uuid</code> or <code>db</code>
+   */
+  public void setIdGenerator(
+      final String idGenerator) {
+    this.idGenerator = idGenerator;
   }
 
   /**

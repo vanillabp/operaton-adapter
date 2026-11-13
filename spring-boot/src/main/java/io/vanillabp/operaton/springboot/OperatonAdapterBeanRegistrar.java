@@ -84,11 +84,14 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
     // a key of Camunda's Spring Boot starter which nobody reads any more would change
     // nothing, and nobody would notice. So it ends the start, with what to write instead
     if (!operatonAdapterIds.isEmpty()) {
-      OperatonVersionOneKeys.endTheStartOnKeysOfVersionOne(
+      final var classLoader = OperatonAdapterBeanRegistrar.class.getClassLoader();
+      OperatonVersionOneKeys.endTheStartOnStarterKeys(
+          OperatonVersionOneKeys.ENGINE_STARTER_NAME,
           operatonAdapterIds,
           propertyNames(environment),
-          OperatonVersionOneKeys.webappsModuleIsPresent(OperatonAdapterBeanRegistrar.class.getClassLoader()),
-          OperatonVersionOneKeys.externalTaskClientIsPresent(OperatonAdapterBeanRegistrar.class.getClassLoader()));
+          OperatonVersionOneKeys.webappsModuleIsPresent(classLoader),
+          OperatonVersionOneKeys.externalTaskClientIsPresent(classLoader),
+          OperatonVersionOneKeys.engineExternalTaskClientIsPresent(classLoader));
     }
 
     operatonAdapterIds
@@ -100,23 +103,20 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
               spec -> spec.supplier(supplierContext -> {
                 final var engineProperties = enginePropertiesFor(environment, adapterId);
                 // the application's DEFAULT DataSource and PlatformTransactionManager
-                // are only needed, and only have to exist, if the id names no
-                // datasource bean (data-source-name)
-                final var usesNamedDataSource = engineProperties.usesSeparateDataSource();
+                // are asked for only where the engine needs them: for an id which
+                // names no datasource bean, or which names the default datasource by
+                // its bean name
                 return new OperatonEngineHolder(
-                    adapterId, engineProperties, usesNamedDataSource
-                        ? null
-                        : () -> applicationBean(supplierContext, DataSource.class, adapterId), usesNamedDataSource
-                            ? null
-                            : () -> applicationBean(supplierContext, PlatformTransactionManager.class,
-                                adapterId), supplierContext
-                                    .bean(WorkflowTaskInvoker.class), supplierContext
+                    adapterId, engineProperties, () -> applicationBean(supplierContext, DataSource.class,
+                        adapterId), () -> applicationBean(supplierContext, PlatformTransactionManager.class,
+                            adapterId), supplierContext
+                                .bean(WorkflowTaskInvoker.class), supplierContext
+                                    .beanProvider(
+                                        io.vanillabp.integration.adapter.spi.workflowstart.BpmsInitiatedStartInvoker.class)
+                                    .getIfAvailable(), supplierContext
                                         .beanProvider(
-                                            io.vanillabp.integration.adapter.spi.workflowstart.BpmsInitiatedStartInvoker.class)
-                                        .getIfAvailable(), supplierContext
-                                            .beanProvider(
-                                                io.vanillabp.integration.adapter.spi.workflowend.WorkflowEndedInvoker.class)
-                                            .getIfAvailable());
+                                            io.vanillabp.integration.adapter.spi.workflowend.WorkflowEndedInvoker.class)
+                                        .getIfAvailable());
               }));
 
           registry.registerBean(
