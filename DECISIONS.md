@@ -235,3 +235,52 @@ variable, so the builds go back to Maven Central without a push should GitHub Pa
 
 **Where it is referred to:** the addendum line of decision 9. `CONTRIBUTING.md` describes the
 same, and `.github/maven/settings.xml` and the workflows say it in their comments.
+
+**Addendum:** see decision 11.
+
+### 11. Addendum to decision 10: a snapshot reaches Maven Central again, without a sources jar, and a refused request is repeated
+
+Proposed by stories 2162 and 2160, 2026-11-13. It adds to decision 10, which brought the profile
+`publish-snapshots`. The rest of decision 10 holds. `adapter-platform-integration` made the same
+change, see decision 139 in adapter-platform-integration for the URL and decision 140 in
+adapter-platform-integration for the sources jar and the repeats.
+
+Here only `migration-tests/pom.xml` changes, see below. `pom.xml` and `.mvn/maven.config` come from
+the Camunda 7 adapter through `bin/sync-from-camunda7.sh`, which keeps only the files in
+`KEPT_BY_MAIN` as they are here. So this repository takes the change with the first sync after it is
+on `main` of the Camunda 7 adapter, see decision 66 in camunda7-adapter. Until then a snapshot of
+this repository still goes to GitHub Packages twice and not to Maven Central. The paragraphs below
+describe the POM as it is after that sync.
+
+**The snapshot reaches Maven Central again.** The profile `publish-snapshots` sets the snapshot
+repository of the POM to GitHub Packages, because that is where `maven-deploy-plugin` uploads.
+`central-publishing-maven-plugin` 0.12.0 reads the same setting: where its configuration names no
+`centralSnapshotsUrl`, it uploads a snapshot to the snapshot repository of the POM. So since story
+2158 every snapshot of this repository went to GitHub Packages twice and never to Maven Central, and
+the build stayed green. The configuration of the plugin in the profile now names
+`https://central.sonatype.com/repository/maven-snapshots/` as `centralSnapshotsUrl`. The modules
+which are not published keep `skip.central.release`, so the list of published modules is the same as
+before.
+
+**A snapshot carries no sources jar.** Maven Central answers the GitHub runners with 429 Too Many
+Requests, and every file a publish uploads is one more request. The root POM no longer binds
+`maven-source-plugin`, so a snapshot carries the jar, the POM and their checksums, and nothing else.
+GitHub Packages gets no sources jar either, because both repositories get their files from one
+build. A release still carries a sources jar and a javadoc jar: the release workflow runs with the
+profile `release` of `io.vanillabp:release-parent`, which binds both. A developer who opens a class
+of a snapshot in the IDE sees decompiled code again, as before the root POM bound the plugin. In
+this repository `migration-tests` builds no jar and publishes nothing, so it binds the plugin
+itself. Without a file of its own in a module, `central-publishing-maven-plugin` stops the whole
+publish, also for a module it leaves out. Its POM belongs to this repository, so the sync does not
+bring this, and it is changed here.
+
+**A refused request is repeated.** `.mvn/maven.config` tells Maven to repeat a request which a
+server answers with 429 or 503. It repeats a request at most twice and waits as long as the
+`Retry-After` header asks, up to 35 minutes. Central blocks a runner for about half an hour, and
+every request during the block makes it longer, so waiting once is better than asking again. Maven
+also uploads one file after the other instead of five at once. The file applies to every build of
+this repository, on a laptop and in a pull request as well.
+
+**Where it is referred to:** the addendum line of decision 10 and the comment at
+`maven-source-plugin` in `migration-tests/pom.xml`. In the Camunda 7 adapter, the comments in
+`pom.xml` and in `.mvn/maven.config` describe it.
