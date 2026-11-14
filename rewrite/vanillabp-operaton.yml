@@ -890,6 +890,31 @@ recipeList:
       replace: 'ENGINE_STARTER_NAME = "operaton";'
       caseSensitive: true
       filePattern: '**/*.java'
+  # Operaton's Quarkus extension reads 'quarkus.operaton.*', not 'quarkus.camunda.*'. The Camunda 7
+  # adapter keeps the name of its engine's extension in one constant, and its check of the
+  # extension keys on Quarkus reads that name. With 'operaton' there, a left-over
+  # 'quarkus.operaton.*' key ends the start. OperatonEngineExtensionKeysTest fails without this rule.
+  - org.openrewrite.text.FindAndReplace:
+      find: 'ENGINE_EXTENSION_NAME = "camunda";'
+      replace: 'ENGINE_EXTENSION_NAME = "operaton";'
+      caseSensitive: true
+      filePattern: '**/*.java'
+  # The test of that check boots Quarkus with keys of the engine's extension and reads them in
+  # the message. Here they are Operaton's keys, so the test shows the rule above at work. The
+  # edge cases test is left out on purpose: it names the extension in each call and also
+  # shows that a fork leaves 'quarkus.camunda.*' alone.
+  - org.openrewrite.text.FindAndReplace:
+      find: 'quarkus.camunda.'
+      replace: 'quarkus.operaton.'
+      caseSensitive: true
+      filePattern: '**/*EngineExtensionKeysTest.java'
+  # The same keys in the configuration of that test, written as YAML below 'quarkus:'.
+  - org.openrewrite.text.FindAndReplace:
+      find: '(?m)^  camunda:$'
+      replace: '  operaton:'
+      caseSensitive: true
+      regex: true
+      filePattern: '**/engine-extension-keys/application.yaml'
 ---
 type: specs.openrewrite.org/v1beta/recipe
 name: io.vanillabp.operaton.DecisionsOfTheCamunda7Adapter

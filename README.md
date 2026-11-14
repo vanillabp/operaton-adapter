@@ -156,6 +156,11 @@ During a move from Camunda 7, `camunda7-adapter-spring-boot-webapps` sets `camun
 `false` as its default. That does not end the start, because the check skips the property sources
 which a webapps module of VanillaBP adds. The same key written by the application still ends it.
 `OperatonNextToTheCamunda7WebappsIT` tests both.
+On Quarkus a key of Operaton's extension (`quarkus.operaton.*`) ends the start, and the message
+says what to write instead. The check comes from the Camunda 7 adapter, and the rule for
+`ENGINE_EXTENSION_NAME` in `rewrite/vanillabp-operaton.yml` gives it Operaton's name
+(`OperatonEngineExtensionKeysTest`). A key of Camunda's extension (`quarkus.camunda.*`) is not
+checked: no application had one, because VanillaBP 1 had no adapter for Quarkus.
 A `DataSource` bean `camundaBpmDataSource` keeps its Camunda name and works as with the Camunda 7
 adapter. The
 [Configuration page of the wiki](https://github.com/vanillabp/operaton-adapter/wiki/Configuration)
