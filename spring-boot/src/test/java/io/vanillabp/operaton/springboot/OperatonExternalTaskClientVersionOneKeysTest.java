@@ -25,8 +25,8 @@ import io.vanillabp.operaton.springboot.processservice.OperatonProcessServiceCon
  * test dependency, so the adapter finds it here by the name of {@link ClientProperties}. This
  * test goes red if that class is renamed, because then the keys below end the start.
  * <p>
- * The test uses Camunda's starter, not Operaton's. Operaton's starter reads
- * <code>operaton.bpm.client.*</code>, and the adapter does not check those keys at all.
+ * The test uses Camunda's starter. Operaton's starter reads <code>operaton.bpm.client.*</code>,
+ * and <code>OperatonEngineExternalTaskClientKeysTest</code> shows that those keys stay as well.
  */
 @ExtendWith(SuppressOutputExtension.class)
 public class OperatonExternalTaskClientVersionOneKeysTest {
