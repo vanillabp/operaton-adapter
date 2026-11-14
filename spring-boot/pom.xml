@@ -105,12 +105,18 @@
     </dependency>
     <dependency>
       <!-- reads camunda.bpm.client.*, which the adapter then leaves alone. See
-           OperatonExternalTaskClientVersionOneKeysTest. It is Camunda's starter on purpose:
-           Operaton's starter reads operaton.bpm.client.*, which the adapter does not check, so
-           the test would show nothing with it -->
+           OperatonExternalTaskClientVersionOneKeysTest -->
       <groupId>org.camunda.bpm.springboot</groupId>
       <artifactId>camunda-bpm-spring-boot-starter-external-task-client</artifactId>
       <version>7.24.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <!-- reads operaton.bpm.client.*, which the adapter then leaves alone as well. See
+           OperatonEngineExternalTaskClientKeysTest. The version comes from the parent, the
+           same as the one of the engine -->
+      <groupId>org.operaton.bpm.springboot</groupId>
+      <artifactId>operaton-bpm-spring-boot-starter-external-task-client</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
