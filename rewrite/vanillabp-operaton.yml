@@ -490,6 +490,9 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7OldProcessVersionsIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonOldProcessVersionsIT
   - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7OptimisticLockingCollisionIT
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonOptimisticLockingCollisionIT
+  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.it.Camunda7ParamTypesIT
       newFullyQualifiedTypeName: io.vanillabp.camunda7.it.OperatonParamTypesIT
   - org.openrewrite.java.ChangeType:
