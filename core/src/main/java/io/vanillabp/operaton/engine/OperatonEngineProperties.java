@@ -158,7 +158,7 @@ public class OperatonEngineProperties {
    * applies to.
    * <p>
    * There is on purpose no TASK level. That level is keyed by a task DEFINITION, and this key
-   * decides whether a listener becomes a task at all.
+   * decides whether a listener becomes a task at all. A value set at task level ends the start.
    */
   private boolean allowListeners = false;
 
