@@ -67,9 +67,6 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
 
   }
 
-  private static final org.slf4j.Logger log = org.slf4j.LoggerFactory
-      .getLogger(OperatonAdapterBeanRegistrar.class);
-
   @Override
   public void register(
       final BeanRegistry registry,
@@ -216,12 +213,10 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
                 // a Spring bean named like a task definition takes the expression away
                 // from the method. The startup check asks the context the engine asks
                 deploymentService.setClassOfTheBeanNamed(engine::classOfTheBeanNamed);
-                // a key at a level which does not resolve it changes nothing. Silence
-                // would be worse than a line which says where the key is read
-                io.vanillabp.operaton.wiring.OperatonListeners.reportKeysSetAtTaskLevel(
+                // a key at a level which does not read it would change nothing in silence
+                io.vanillabp.operaton.wiring.OperatonListeners.refuseKeysSetAtTaskLevel(
                     adapterId,
-                    deploymentOverlay.allowListenersKeysAtTaskLevel(adapterId),
-                    log::warn);
+                    deploymentOverlay.allowListenersKeysAtTaskLevel(adapterId));
                 return deploymentService;
               }));
 
