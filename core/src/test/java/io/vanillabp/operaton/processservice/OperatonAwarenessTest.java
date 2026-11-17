@@ -16,6 +16,7 @@ import org.operaton.bpm.engine.TaskService;
 import org.operaton.bpm.engine.runtime.ExecutionQuery;
 import org.operaton.bpm.engine.task.TaskQuery;
 
+import io.vanillabp.integration.adapter.spi.PhaseTwoFailureKind;
 import io.vanillabp.integration.adapter.spi.WorkflowAwareness;
 import io.vanillabp.integration.spi.AggregatePersistenceAware;
 import io.vanillabp.integration.test.utils.SuppressOutputExtension;
@@ -110,21 +111,24 @@ public class OperatonAwarenessTest {
 
     final var testee = withUnreachableEngine();
 
-    assertTrue(
+    assertEquals(
+        PhaseTwoFailureKind.COLLISION,
         testee
-            .isPhaseTwoFailureACollision(
+            .kindOfPhaseTwoFailure(
                 new org.operaton.bpm.engine.OptimisticLockingException("another transaction was faster")));
     // the transaction of the dispatch may wrap it on its way out
-    assertTrue(
+    assertEquals(
+        PhaseTwoFailureKind.COLLISION,
         testee
-            .isPhaseTwoFailureACollision(
+            .kindOfPhaseTwoFailure(
                 new IllegalStateException(
                     "rolled back", new org.operaton.bpm.engine.OptimisticLockingException("lost"))));
 
     // a database which is away is no race. The backoff of the outbox is the right answer
-    assertFalse(testee.isPhaseTwoFailureACollision(new ProcessEngineException("the database hiccupped")));
-    assertFalse(testee.isPhaseTwoFailureACollision(new BadUserRequestException("no such task")));
-    assertFalse(testee.isPhaseTwoFailureACollision(null));
+    assertEquals(PhaseTwoFailureKind.OTHER,
+        testee.kindOfPhaseTwoFailure(new ProcessEngineException("the database hiccupped")));
+    assertEquals(PhaseTwoFailureKind.OTHER, testee.kindOfPhaseTwoFailure(new BadUserRequestException("no such task")));
+    assertEquals(PhaseTwoFailureKind.OTHER, testee.kindOfPhaseTwoFailure(null));
 
   }
 
