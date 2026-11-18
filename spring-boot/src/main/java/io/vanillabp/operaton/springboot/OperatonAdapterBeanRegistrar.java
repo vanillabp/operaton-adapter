@@ -217,6 +217,9 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
                 io.vanillabp.operaton.wiring.OperatonListeners.refuseKeysSetAtTaskLevel(
                     adapterId,
                     deploymentOverlay.allowListenersKeysAtTaskLevel(adapterId));
+                io.vanillabp.operaton.sync.OperatonSerializationFormats.refuseKeysSetAtTaskLevel(
+                    adapterId,
+                    deploymentOverlay.serializationFormatKeysAtTaskLevel(adapterId));
                 return deploymentService;
               }));
 

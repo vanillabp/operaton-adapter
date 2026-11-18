@@ -213,6 +213,9 @@ public class OperatonAdapterProducer {
           io.vanillabp.operaton.wiring.OperatonListeners.refuseKeysSetAtTaskLevel(
               adapterId,
               overlay.allowListenersKeysAtTaskLevel(adapterId));
+          io.vanillabp.operaton.sync.OperatonSerializationFormats.refuseKeysSetAtTaskLevel(
+              adapterId,
+              overlay.serializationFormatKeysAtTaskLevel(adapterId));
           return deploymentService;
         })
         .toList();
