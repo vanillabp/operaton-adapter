@@ -298,6 +298,9 @@ recipeList:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.Camunda7StartEventsOfHeldVersionsTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.OperatonStartEventsOfHeldVersionsTest
   - org.openrewrite.java.ChangeType:
+      oldFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.Camunda7StartsOfTheEngineReportTest
+      newFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.OperatonStartsOfTheEngineReportTest
+  - org.openrewrite.java.ChangeType:
       oldFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.Camunda7TasksOfTheOwnVersionTest
       newFullyQualifiedTypeName: io.vanillabp.camunda7.deployment.OperatonTasksOfTheOwnVersionTest
   - org.openrewrite.java.ChangeType:
