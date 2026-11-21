@@ -89,6 +89,10 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
           OperatonVersionOneKeys.webappsModuleIsPresent(classLoader),
           OperatonVersionOneKeys.externalTaskClientIsPresent(classLoader),
           OperatonVersionOneKeys.engineExternalTaskClientIsPresent(classLoader));
+      // the overlay binds the emergency exit. So a value in application.yaml would be
+      // taken over by the binding and still change nothing
+      io.vanillabp.operaton.wiring.SuspendedProcessDefinitions.refuseTheSwitchSetAsConfiguration(
+          whereTheSwitchIsSetAsConfiguration(environment));
     }
 
     operatonAdapterIds
@@ -283,6 +287,45 @@ public class OperatonAdapterBeanRegistrar implements BeanRegistrar {
             Bindable.of(OperatonEngineProperties.class),
             EmptySections.bindHandler())
         .orElseGet(OperatonEngineProperties::new);
+
+  }
+
+  /**
+   * Every place outside the system properties and the environment variables where the
+   * emergency exit for suspended process definitions is written, for example a line of
+   * application.yaml.
+   *
+   * @param environment The environment of the application
+   * @return Where the key is written, as Spring Boot names the origin, empty if nowhere
+   */
+  static List<String> whereTheSwitchIsSetAsConfiguration(
+      final Environment environment) {
+
+    final var name = org.springframework.boot.context.properties.source.ConfigurationPropertyName
+        .of(io.vanillabp.operaton.wiring.SuspendedProcessDefinitions.IGNORE_PROPERTY);
+    final var result = new java.util.ArrayList<String>();
+    for (final var source : org.springframework.boot.context.properties.source.ConfigurationPropertySources
+        .get(environment)) {
+      final var sourceName = source
+          .getUnderlyingSource() instanceof org.springframework.core.env.PropertySource<?> propertySource
+              ? propertySource.getName()
+              : String.valueOf(source.getUnderlyingSource());
+      if (org.springframework.core.env.StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME.equals(
+          sourceName) || org.springframework.core.env.StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME
+              .equals(sourceName)) {
+        continue;
+      }
+      final var property = source.getConfigurationProperty(name);
+      if (property == null) {
+        continue;
+      }
+      result.add(property.getOrigin() != null
+          ? property
+              .getOrigin()
+              .toString()
+          : "property source '%s'".formatted(sourceName));
+    }
+    return result;
 
   }
 
