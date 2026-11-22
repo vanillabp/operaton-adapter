@@ -55,7 +55,18 @@ jobs:
         with:
           java-version: 25.0.5+8
           distribution: temurin
-          cache: maven
+      # The Maven repository of the newest run on main, read only. This job builds against
+      # the next version of the engine, which main does not use, so it does not write the
+      # cache.
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ hashFiles('**/pom.xml') }}-${{ github.run_id }}
+          restore-keys: |
+            maven-${{ hashFiles('**/pom.xml') }}-
+            maven-
+      # the cache above can hold old snapshots of our own, so they go and Maven fetches the newest
+      - uses: ./.github/actions/forget-cached-snapshots
       # The newest version by number, not the one Maven Central calls 'latest': that is
       # the one deployed last, and a patch of the old minor is often deployed after the
       # first milestone of the next one. A '-' is turned into '~' for the sort, because
@@ -81,12 +92,13 @@ jobs:
             echo
             echo "- \`org.operaton.bpm\` $version (the root POM pins $pinned)"
           } | tee -a "$GITHUB_STEP_SUMMARY" > "${RUNNER_TEMP}/operaton-version.md"
-      # The same command a pull request runs, with one property more. '--update-snapshots'
-      # keeps the VanillaBP snapshots as fresh as they are in a pull request, so a red night
+      # The same command a pull request runs, with one property more. The VanillaBP
+      # snapshots are as fresh as they are in a pull request, because the cache brings none
+      # of them in, so a red night
       # here and a green one against the platform snapshot point at Operaton.
       - name: Build and test against that Operaton version
         run: mvn -s .github/maven/settings.xml ${VBP_SNAPSHOTS_PROFILE} --batch-mode --no-transfer-progress
-          --update-snapshots install -Doperaton.version=${{ steps.version.outputs.version }}
+          install -Doperaton.version=${{ steps.version.outputs.version }}
         env:
           CI: false
       # so the issue of a red night can name the version without reading the log
