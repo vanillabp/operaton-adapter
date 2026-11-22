@@ -55,7 +55,16 @@ jobs:
         with:
           java-version: 25.0.5+8
           distribution: temurin
-          cache: maven
+      # The Maven repository of the newest run on main, read only. This job builds against
+      # the next version of the engine, which main does not use, so it does not write the
+      # cache.
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.m2/repository
+          key: maven-${{ hashFiles('**/pom.xml') }}-${{ github.run_id }}
+          restore-keys: |
+            maven-${{ hashFiles('**/pom.xml') }}-
+            maven-
       # the cache above can hold old snapshots of our own, so they go and Maven fetches the newest
       - uses: ./.github/actions/forget-cached-snapshots
       # The newest version by number, not the one Maven Central calls 'latest': that is
