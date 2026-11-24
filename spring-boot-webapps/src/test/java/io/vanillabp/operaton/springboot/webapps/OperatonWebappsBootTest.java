@@ -125,7 +125,7 @@ public class OperatonWebappsBootTest {
 
     final var entry = rest
         .get()
-        .uri("/camunda/app/cockpit/")
+        .uri("/operaton/app/cockpit/")
         .retrieve()
         .toBodilessEntity();
 
@@ -136,7 +136,7 @@ public class OperatonWebappsBootTest {
         .getFirst(HttpHeaders.LOCATION);
     assertNotNull(location, "the web application should redirect somewhere");
     assertTrue(
-        location.endsWith("/camunda/app/cockpit/"
+        location.endsWith("/operaton/app/cockpit/"
             + ENGINE
             + "/"),
         location);
@@ -148,12 +148,12 @@ public class OperatonWebappsBootTest {
   public void aUrlWithAnotherEngineNameIsNotServed() {
 
     // the README says what such a URL gets, so that a bookmark of version 1 can be
-    // explained. The answer is Camunda's: it serves the page for any engine name and fails
-    // on the engine which is not there. If a version of Camunda answers otherwise, this
+    // explained. The answer is Operaton's: it serves the page for any engine name and fails
+    // on the engine which is not there. If a version of Operaton answers otherwise, this
     // test fails and the README has to say the new answer
     final var app = rest
         .get()
-        .uri("/camunda/app/cockpit/default/")
+        .uri("/operaton/app/cockpit/default/")
         .retrieve()
         .onStatus(status -> true, (
             request,
